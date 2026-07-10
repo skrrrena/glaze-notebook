@@ -1301,6 +1301,10 @@ async function confirmNbSave() {
       glazes: glazes.map(g=>({
         name: g.name,
         sourceIndex: g.sourceIndex,
+        // human-readable snapshot of what sourceIndex pointed to at save time —
+        // not used in any calculation, purely an audit trail in case the positional
+        // reference ever drifts (see findGlazeSourceIssues).
+        sourceName: g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || null),
         sourceAmount: g.sourceAmount,
         amountUnknown: !!g.amountUnknown,
         additives: g.additives.map(a=>({...a})),
@@ -1501,10 +1505,18 @@ function importNotebook(input) {
       const toImport = imp.filter(rec => !existingLegacyIds.has(rec.id));
       let added=0, photoCount=0;
       for (const rec of toImport) {
+        const importedGlazes = rec.glazes||[];
+        const sourceIssues = findGlazeSourceIssues(importedGlazes);
+        Object.entries(sourceIssues).forEach(([gi, issue]) =>
+          console.warn(`[导入 glazes 源引用异常] num=${rec.num} name=${rec.name} 第${gi}步「${importedGlazes[gi]?.name}」: ${issue}`));
         const payload = {
           legacy_id: rec.id, num: rec.num||'', name: rec.name, note: rec.note||'',
           base_ingredients: rec.baseIngredients||[], base_dry: rec.baseDry||0, base_water: rec.baseWater||0,
-          glazes: rec.glazes||[], additives: rec.additives||{}, photos: [],
+          glazes: importedGlazes.map(g => ({
+            ...g,
+            sourceName: g.sourceName || (g.sourceIndex===-1 ? '基础釉' : (importedGlazes[g.sourceIndex]?.name || null)),
+          })),
+          additives: rec.additives||{}, photos: [],
         };
         const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
         if(error) continue;
@@ -1559,9 +1571,37 @@ function addBase() { baseIngredients.push({name:'',parts:0}); renderBase(); }
 function removeBase(i) { baseIngredients.splice(i,1); renderBase(); }
 
 // ── glaze steps ──
+// sourceIndex is a positional reference into this same glazes array (-1 = 本条目基釉).
+// It's only ever written by addGlaze (append) and removeGlaze (which re-shifts every
+// reference), so today's UI can't produce a dangling one — but imported/legacy jsonb
+// or any future direct-array mutation could. Detect and surface that instead of silently
+// falling back to "基础釉"/"上步".
+function findGlazeSourceIssues(glazesArr) {
+  const issues = {};
+  glazesArr.forEach((g, gi) => {
+    const si = g.sourceIndex;
+    if (si === -1 || si === undefined || si === null) return;
+    if (typeof si !== 'number' || si < 0 || si >= glazesArr.length) {
+      issues[gi] = `sourceIndex 越界 (${si})`; return;
+    }
+    if (si === gi) { issues[gi] = '自引用'; return; }
+    let cur = si, seen = new Set([gi]), steps = 0;
+    while (cur !== -1 && cur !== undefined && cur !== null) {
+      if (seen.has(cur)) { issues[gi] = `成环 (回到第${cur}步)`; return; }
+      seen.add(cur);
+      cur = glazesArr[cur]?.sourceIndex;
+      if (++steps > glazesArr.length + 2) { issues[gi] = '链路异常过长，疑似成环'; return; }
+    }
+  });
+  return issues;
+}
+
 function renderGlazes() {
   const w = document.getElementById('glazes-wrap');
   w.innerHTML = '';
+  const sourceIssues = findGlazeSourceIssues(glazes);
+  Object.entries(sourceIssues).forEach(([gi, issue]) =>
+    console.warn(`[glazes 源引用异常] 第${gi}步「${glazes[gi]?.name}」: ${issue}`));
   glazes.forEach((g,gi) => {
     const sourceOpts = glazes.slice(0,gi).map((prev,pi)=>
       `<option value="${pi}" ${g.sourceIndex===pi?'selected':''}>${prev.name}</option>`
@@ -1573,7 +1613,8 @@ function renderGlazes() {
         <button class="btn-icon" onclick="removeAdditive(${gi},${ai})" title="删除">×</button>
       </div>
     `).join('');
-    const srcLabel = g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || '上步');
+    const srcIssue = sourceIssues[gi];
+    const srcLabel = srcIssue ? `⚠ 源引用异常：${srcIssue}` : (g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || '上步'));
     const isUnknown = !!g.amountUnknown;
     const amountField = isUnknown
       ? `<span class="amount-unknown-badge">？ 待定</span>`
@@ -1587,7 +1628,7 @@ function renderGlazes() {
         <button class="btn-icon" onclick="removeGlaze(${gi})" title="删除">×</button>
       </div>
       <div class="glaze-card-body">
-        <div class="field-label" style="margin-bottom:4px">取自</div>
+        <div class="field-label" style="margin-bottom:4px">取自 <span style="font-weight:400;${srcIssue?'color:var(--danger)':'color:var(--ink3)'}">← ${srcLabel}</span></div>
         <div class="source-row">
           <select onchange="glazes[${gi}].sourceIndex=parseInt(this.value);renderGlazes()">
             <option value="-1" ${g.sourceIndex===-1?'selected':''}>基础釉</option>
@@ -1768,6 +1809,7 @@ function calculate() {
     glazes: glazes.map(g=>({
       name: g.name,
       sourceIndex: g.sourceIndex,
+      sourceName: g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || null),
       sourceAmount: g.sourceAmount,
       amountUnknown: !!g.amountUnknown,
       additives: g.additives.map(a=>({...a})),
@@ -1890,6 +1932,7 @@ async function confirmUpdateToNb() {
       glazes: [{
         name: glaze.name,
         sourceIndex: -1,
+        sourceName: '基础釉',
         sourceAmount: glaze.sourceAmount,
         amountUnknown: !!glaze.amountUnknown,
         additives: (glaze.additives || []).map(a => ({...a})),
