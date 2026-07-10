@@ -1282,27 +1282,31 @@ async function confirmNbSave() {
   const additives = {};
   nbModalAdditives.forEach(a => { if(a.name.trim()) additives[a.name.trim()] = a.pct; });
 
-  const payload = {
-    num, name, note,
-    base_ingredients: baseIngredients.map(i=>({...i})),
-    base_dry: parseFloat(document.getElementById('base-dry').value)||0,
-    base_water: parseFloat(document.getElementById('base-water').value)||0,
-    glazes: glazes.map(g=>({
-      name: g.name,
-      sourceIndex: g.sourceIndex,
-      sourceAmount: g.sourceAmount,
-      amountUnknown: !!g.amountUnknown,
-      additives: g.additives.map(a=>({...a})),
-    })),
-    additives,
-  };
-
   if(editIdx !== '') {
+    // edit mode: this modal only shows base ingredients/glazes read-only (from the
+    // record itself), it never lets you change them — so don't touch those fields.
+    // Writing the global calculator state here would silently overwrite the record's
+    // base recipe with whatever unrelated recipe happens to be loaded in the Calc tab.
+    const payload = { num, name, note, additives };
     const existing = notebook[parseInt(editIdx)];
     const { data, error } = await sb.from('notebook_entries').update(payload).eq('id', existing.id).select().single();
     if(error) { alert('保存失败：'+error.message); return; }
     notebook[parseInt(editIdx)] = Object.assign(rowToNotebook(data), {photos: existing.photos});
   } else {
+    const payload = {
+      num, name, note,
+      base_ingredients: baseIngredients.map(i=>({...i})),
+      base_dry: parseFloat(document.getElementById('base-dry').value)||0,
+      base_water: parseFloat(document.getElementById('base-water').value)||0,
+      glazes: glazes.map(g=>({
+        name: g.name,
+        sourceIndex: g.sourceIndex,
+        sourceAmount: g.sourceAmount,
+        amountUnknown: !!g.amountUnknown,
+        additives: g.additives.map(a=>({...a})),
+      })),
+      additives,
+    };
     const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
     if(error) { alert('保存失败：'+error.message); return; }
     notebook.unshift(rowToNotebook(data));
