@@ -401,6 +401,29 @@
   }
   .nb-empty .big { font-size: 3rem; opacity: 0.12; margin-bottom: 1rem; }
 
+  .glaze-tree { margin-bottom: 10px; }
+  .glaze-tree ul { list-style: none; margin: 0; padding-left: 16px; }
+  .glaze-tree > ul { padding-left: 0; }
+  .glaze-tree li { position: relative; margin: 5px 0; }
+  .glaze-tree li ul { border-left: 1px dashed var(--nb-line); margin-left: 7px; padding-top: 5px; }
+  .glaze-tree-node {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    padding: 3px 9px; border-radius: 3px;
+    background: var(--bg2); color: var(--ink2); border: 1px solid var(--line);
+    cursor: pointer; transition: all 0.12s;
+  }
+  .glaze-tree-node:hover { background: var(--nb-bg); color: var(--nb); border-color: var(--nb-line); }
+  .glaze-tree-root { background: var(--nb-bg); color: var(--nb); border-color: var(--nb-line); cursor: default; }
+  .glaze-tree-root:hover { background: var(--nb-bg); color: var(--nb); }
+  .glaze-tree-amount { color: var(--ink3); font-size: 0.64rem; }
+  .glaze-tree-issue, .glaze-tree-issue:hover { border-color: var(--danger); color: var(--danger); }
+  @keyframes nbCardFlash {
+    0%, 100% { box-shadow: 0 0 0 2px transparent inset; }
+    30%, 70% { box-shadow: 0 0 0 2px var(--nb) inset; }
+  }
+  .nb-card-flash { animation: nbCardFlash 1.1s ease; }
+
   /* notebook modal */
   .nbmodal-overlay {
     display: none; position: fixed; inset: 0;
@@ -1340,6 +1363,59 @@ async function confirmNbSave() {
   });
 }
 
+// Notebook cards only ever showed the flat baseIngredients/additives of a record —
+// the sourceIndex/sourceName chain in rec.glazes (how this record was actually derived,
+// step by step) was computed but never surfaced. That's how 306 wearing 311's entire
+// derivation tree went unnoticed. Render it explicitly so a wrong chain is visible at a glance.
+function renderGlazeTree(rec) {
+  const arr = rec.glazes || [];
+  if (!arr.length) return '';
+  const issues = findGlazeSourceIssues(arr);
+  const childrenOf = new Map();
+  const orphanIdx = [];
+  arr.forEach((g, gi) => {
+    if (issues[gi]) { orphanIdx.push(gi); return; }
+    const p = g.sourceIndex;
+    if (!childrenOf.has(p)) childrenOf.set(p, []);
+    childrenOf.get(p).push(gi);
+  });
+  const escAttr = s => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  function renderNode(gi) {
+    const g = arr[gi];
+    const issue = issues[gi];
+    const kids = childrenOf.get(gi) || [];
+    const amountLabel = issue ? '⚠' : (g.amountUnknown ? '？' : `${g.sourceAmount || 0}g`);
+    return `<li>
+      <div class="glaze-tree-node ${issue ? 'glaze-tree-issue' : ''}" onclick="jumpToNbByLabel('${escAttr(g.name)}')" title="${issue ? ('⚠ ' + issue) : '点击跳转到对应记录'}">
+        ${g.name || '(未命名)'} <span class="glaze-tree-amount">${amountLabel}</span>
+      </div>
+      ${kids.length ? `<ul>${kids.map(renderNode).join('')}</ul>` : ''}
+    </li>`;
+  }
+  const roots = childrenOf.get(-1) || [];
+  const rootHtml = roots.length
+    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="本记录自身基础釉">基础釉</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
+    : '';
+  const orphanHtml = orphanIdx.length ? `<ul>${orphanIdx.map(renderNode).join('')}</ul>` : '';
+  if (!rootHtml && !orphanHtml) return '';
+  return `<div class="nb-section-label">衍生树</div><div class="glaze-tree">${rootHtml}${orphanHtml}</div>`;
+}
+
+// A tree node's name (e.g. "312") is just a label snapshot, not a real FK to another
+// record — so jumping is best-effort: match by num first, then exact name, then substring.
+function jumpToNbByLabel(label) {
+  let idx = notebook.findIndex(r => r.num && r.num === label);
+  if (idx === -1) idx = notebook.findIndex(r => r.name === label);
+  if (idx === -1) idx = notebook.findIndex(r => r.name && r.name.includes(label));
+  if (idx === -1) { alert(`配方本里没找到「${label}」对应的记录`); return; }
+  const el = document.getElementById(`nb-card-${idx}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.remove('nb-card-flash');
+  void el.offsetWidth;
+  el.classList.add('nb-card-flash');
+}
+
 function renderNotebook() {
   const wrap = document.getElementById('nb-list');
   const countEl = document.getElementById('nb-toolbar-count');
@@ -1357,7 +1433,7 @@ function renderNotebook() {
     ).join('');
 
     return `
-      <div class="nb-card ${nbBatchMode && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}">
+      <div class="nb-card ${nbBatchMode && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="nb-card-${ni}">
         <div class="nb-card-head">
           ${nbBatchMode ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
           ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
@@ -1378,6 +1454,7 @@ function renderNotebook() {
           <div class="nb-section-label">基础原料</div>
           <div class="nb-row">${baseTags}</div>
           ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
+          ${renderGlazeTree(rec)}
           <div id="nbnote-display-${ni}" onclick="editNbNote(${ni})" style="cursor:pointer">
             ${rec.note
               ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>`
