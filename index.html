@@ -771,6 +771,7 @@
   <div class="nbmodal">
     <h3 id="nb-modal-title">存入配方本</h3>
     <input type="hidden" id="nb-modal-edit-index" value="">
+    <input type="hidden" id="nb-modal-glaze-index" value="">
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">编号</div>
     <input type="text" id="nb-modal-num" placeholder="如：201、202A、试验1" maxlength="20" style="width:160px">
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">配方名称</div>
@@ -1207,6 +1208,9 @@ function updateNbBadge() {
 function openNbModal(glazeIndex, glazeState) {
   document.getElementById('nb-modal-title').textContent = glazeIndex !== null ? '存入配方本' : '手动新建配方';
   document.getElementById('nb-modal-edit-index').value = '';
+  // manual-new has no relation to whatever glazes[] happens to be sitting in the
+  // calc tab from a previous load/calculation — confirmNbSave must not inherit it.
+  document.getElementById('nb-modal-glaze-index').value = glazeIndex !== null ? glazeIndex : '';
   document.getElementById('nb-modal-num').value = glazeIndex !== null ? (glazes[glazeIndex].name.replace(/号.*/, '号') || '') : '';
   document.getElementById('nb-modal-name').value = glazeIndex !== null ? glazes[glazeIndex].name : '';
   document.getElementById('nb-modal-note').value = '';
@@ -1235,6 +1239,7 @@ function openNbModalEdit(ni) {
   const rec = notebook[ni];
   document.getElementById('nb-modal-title').textContent = '编辑配方';
   document.getElementById('nb-modal-edit-index').value = ni;
+  document.getElementById('nb-modal-glaze-index').value = '';
   document.getElementById('nb-modal-num').value = rec.num || '';
   document.getElementById('nb-modal-name').value = rec.name || '';
   document.getElementById('nb-modal-note').value = rec.note || '';
@@ -1293,12 +1298,20 @@ async function confirmNbSave() {
     if(error) { alert('保存失败：'+error.message); return; }
     notebook[parseInt(editIdx)] = Object.assign(rowToNotebook(data), {photos: existing.photos});
   } else {
+    // Only a save triggered from an actual calculated glaze step (openNbModal with a
+    // real glazeIndex) should carry the current glazes[] chain. "手动新建"/"存入配方本
+    // （基础釉）" leave nb-modal-glaze-index blank — if we fell back to the global
+    // glazes[] there, whatever was left over from a previous load/calculation would
+    // get silently attached to this unrelated new record (this is exactly how record
+    // 306 ended up wearing another record's derivation tree).
+    const glazeIdxRaw = document.getElementById('nb-modal-glaze-index').value;
+    const savingFromGlazeStep = glazeIdxRaw !== '';
     const payload = {
       num, name, note,
       base_ingredients: baseIngredients.map(i=>({...i})),
       base_dry: parseFloat(document.getElementById('base-dry').value)||0,
       base_water: parseFloat(document.getElementById('base-water').value)||0,
-      glazes: glazes.map(g=>({
+      glazes: savingFromGlazeStep ? glazes.map(g=>({
         name: g.name,
         sourceIndex: g.sourceIndex,
         // human-readable snapshot of what sourceIndex pointed to at save time —
@@ -1308,7 +1321,7 @@ async function confirmNbSave() {
         sourceAmount: g.sourceAmount,
         amountUnknown: !!g.amountUnknown,
         additives: g.additives.map(a=>({...a})),
-      })),
+      })) : [],
       additives,
     };
     const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
@@ -2040,6 +2053,7 @@ function insertBlankLine(textareaId) {
 function openBaseNbModal() {
   document.getElementById('nb-modal-title').textContent = '存入配方本（基础釉）';
   document.getElementById('nb-modal-edit-index').value = '';
+  document.getElementById('nb-modal-glaze-index').value = ''; // 只存基础釉，绝不带 glazes 链
   document.getElementById('nb-modal-num').value = '';
   document.getElementById('nb-modal-name').value = '';
   document.getElementById('nb-modal-note').value = '';
