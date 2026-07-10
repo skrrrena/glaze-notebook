@@ -260,6 +260,14 @@
   .io-btn-import { background: var(--card); color: var(--fav); border-color: var(--fav-line); }
   .io-btn-import:hover { background: var(--fav-bg); border-color: var(--fav); }
   .import-hint { font-size: 0.72rem; color: var(--ink3); font-family: 'DM Mono', monospace; }
+  .batch-bar {
+    display: flex; gap: 8px; align-items: center;
+    margin: -0.8rem 0 1.4rem; padding: 8px 12px;
+    background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
+  }
+  .card-check { margin-right: 2px; cursor: pointer; accent-color: var(--nb); }
+  .nb-card-selected { box-shadow: 0 0 0 2px var(--nb) inset; }
+  .fav-card-selected { box-shadow: 0 0 0 2px var(--fav) inset; }
   .fav-empty {
     text-align: center; padding: 4rem 2rem;
     color: var(--ink3); font-size: 0.85rem; line-height: 2;
@@ -700,7 +708,17 @@
         <button class="io-btn io-btn-export" onclick="exportNotebook()">↓ 导出 JSON</button>
         <button class="io-btn io-btn-import" onclick="document.getElementById('nb-import-input').click()">↑ 导入 JSON</button>
         <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
+        <button class="io-btn" id="nb-batch-btn" onclick="toggleNbBatchMode()">☑ 批量删除</button>
         <button class="nb-new-btn" onclick="openNbModal(null, null)">＋ 手动新建</button>
+      </div>
+    </div>
+    <div class="batch-bar" id="nb-batch-bar" style="display:none">
+      <button class="io-btn io-btn-export" onclick="nbSelectAll()">全选</button>
+      <button class="io-btn io-btn-export" onclick="nbSelectNone()">取消全选</button>
+      <span class="import-hint" id="nb-batch-count-label">已选 0 条</span>
+      <div class="nb-toolbar-right">
+        <button class="io-btn" style="color:var(--danger);border-color:#e8c4be" onclick="deleteNbBatch()">删除选中</button>
+        <button class="io-btn io-btn-export" onclick="toggleNbBatchMode()">取消</button>
       </div>
     </div>
     <div id="nb-list"></div>
@@ -716,6 +734,16 @@
         <button class="io-btn io-btn-export" onclick="exportFavourites()">↓ 导出 JSON</button>
         <button class="io-btn io-btn-import" onclick="document.getElementById('import-input').click()">↑ 导入 JSON</button>
         <input type="file" id="import-input" accept=".json" style="display:none" onchange="importFavourites(this)">
+        <button class="io-btn" id="fav-batch-btn" onclick="toggleFavBatchMode()">☑ 批量删除</button>
+      </div>
+    </div>
+    <div class="batch-bar" id="fav-batch-bar" style="display:none">
+      <button class="io-btn io-btn-export" onclick="favSelectAll()">全选</button>
+      <button class="io-btn io-btn-export" onclick="favSelectNone()">取消全选</button>
+      <span class="import-hint" id="fav-batch-count-label">已选 0 条</span>
+      <div class="fav-toolbar-right">
+        <button class="io-btn" style="color:var(--danger);border-color:#e8c4be" onclick="deleteFavBatch()">删除选中</button>
+        <button class="io-btn io-btn-export" onclick="toggleFavBatchMode()">取消</button>
       </div>
     </div>
     <div id="fav-list"></div>
@@ -842,6 +870,11 @@ let notebook = [];
 let nbModalAdditives = [];
 let pendingSaveIndex = null;
 let lastGlazeStates = [];
+
+let nbBatchMode = false;
+let nbSelectedIds = new Set();
+let favBatchMode = false;
+let favSelectedIds = new Set();
 
 // ── auth ──
 async function sendMagicLink() {
@@ -1303,8 +1336,9 @@ function renderNotebook() {
     ).join('');
 
     return `
-      <div class="nb-card">
+      <div class="nb-card ${nbBatchMode && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}">
         <div class="nb-card-head">
+          ${nbBatchMode ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
           ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
           <div class="nb-name" id="nbname-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni})" title="点击改名">${rec.name} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>
           <div id="nbname-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
@@ -1341,6 +1375,48 @@ function renderNotebook() {
       </div>
     `;
   }).join('');
+  updateNbBatchCount();
+}
+
+function toggleNbBatchMode() {
+  nbBatchMode = !nbBatchMode;
+  if(!nbBatchMode) nbSelectedIds.clear();
+  document.getElementById('nb-batch-bar').style.display = nbBatchMode ? 'flex' : 'none';
+  document.getElementById('nb-batch-btn').textContent = nbBatchMode ? '✕ 退出批量' : '☑ 批量删除';
+  renderNotebook();
+}
+function toggleNbSelect(id, checked) {
+  if(checked) nbSelectedIds.add(id); else nbSelectedIds.delete(id);
+  renderNotebook();
+}
+function nbSelectAll() {
+  notebook.forEach(rec => nbSelectedIds.add(rec.id));
+  renderNotebook();
+}
+function nbSelectNone() {
+  nbSelectedIds.clear();
+  renderNotebook();
+}
+function updateNbBatchCount() {
+  const el = document.getElementById('nb-batch-count-label');
+  if(el) el.textContent = `已选 ${nbSelectedIds.size} 条`;
+}
+async function deleteNbBatch() {
+  if(nbSelectedIds.size === 0) { alert('还没选择要删除的配方'); return; }
+  if(!confirm(`确定删除选中的 ${nbSelectedIds.size} 条配方？此操作不可撤销。`)) return;
+  const ids = [...nbSelectedIds];
+  for(const id of ids) {
+    const rec = notebook.find(r => r.id === id);
+    if(rec) await deleteAllPhotosForRecord('notebook_entries', rec);
+  }
+  await sb.from('notebook_entries').delete().in('id', ids);
+  notebook = notebook.filter(r => !nbSelectedIds.has(r.id));
+  nbSelectedIds.clear();
+  nbBatchMode = false;
+  document.getElementById('nb-batch-bar').style.display = 'none';
+  document.getElementById('nb-batch-btn').textContent = '☑ 批量删除';
+  updateNbBadge();
+  renderNotebook();
 }
 
 function editNbName(ni) {
@@ -2118,8 +2194,9 @@ function renderFavourites() {
     }
 
     return `
-      <div class="fav-card">
+      <div class="fav-card ${favBatchMode && favSelectedIds.has(fav.id) ? 'fav-card-selected' : ''}">
         <div class="fav-card-head">
+          ${favBatchMode ? `<input type="checkbox" class="card-check" ${favSelectedIds.has(fav.id)?'checked':''} onchange="toggleFavSelect('${fav.id}', this.checked)">` : ''}
           <div class="fav-name" style="flex:1;display:flex;align-items:center;gap:6px">
             ${typeLabel}
             <span id="name-display-${fi}" style="cursor:pointer" onclick="editName(${fi})" title="点击改名">${fav.name} <span style="font-size:0.65rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></span>
@@ -2158,6 +2235,48 @@ function renderFavourites() {
       </div>
     `;
   }).join('');
+  updateFavBatchCount();
+}
+
+function toggleFavBatchMode() {
+  favBatchMode = !favBatchMode;
+  if(!favBatchMode) favSelectedIds.clear();
+  document.getElementById('fav-batch-bar').style.display = favBatchMode ? 'flex' : 'none';
+  document.getElementById('fav-batch-btn').textContent = favBatchMode ? '✕ 退出批量' : '☑ 批量删除';
+  renderFavourites();
+}
+function toggleFavSelect(id, checked) {
+  if(checked) favSelectedIds.add(id); else favSelectedIds.delete(id);
+  renderFavourites();
+}
+function favSelectAll() {
+  favourites.forEach(fav => favSelectedIds.add(fav.id));
+  renderFavourites();
+}
+function favSelectNone() {
+  favSelectedIds.clear();
+  renderFavourites();
+}
+function updateFavBatchCount() {
+  const el = document.getElementById('fav-batch-count-label');
+  if(el) el.textContent = `已选 ${favSelectedIds.size} 条`;
+}
+async function deleteFavBatch() {
+  if(favSelectedIds.size === 0) { alert('还没选择要删除的收藏'); return; }
+  if(!confirm(`确定删除选中的 ${favSelectedIds.size} 条收藏？此操作不可撤销。`)) return;
+  const ids = [...favSelectedIds];
+  for(const id of ids) {
+    const fav = favourites.find(f => f.id === id);
+    if(fav) await deleteAllPhotosForRecord('favourites', fav);
+  }
+  await sb.from('favourites').delete().in('id', ids);
+  favourites = favourites.filter(f => !favSelectedIds.has(f.id));
+  favSelectedIds.clear();
+  favBatchMode = false;
+  document.getElementById('fav-batch-bar').style.display = 'none';
+  document.getElementById('fav-batch-btn').textContent = '☑ 批量删除';
+  updateFavBadge();
+  renderFavourites();
 }
 
 async function importFavToNotebook(fi) {
