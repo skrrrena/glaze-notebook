@@ -1,0 +1,119 @@
+-- 釉料配方计算器 — Supabase schema
+-- 在 Supabase 项目的 SQL Editor 里整段执行一次即可。
+
+-- ── notebook_entries ──
+create table public.notebook_entries (
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  num              text,
+  name             text not null,
+  note             text default '',
+  base_ingredients jsonb not null default '[]'::jsonb,   -- [{name, parts}]
+  base_dry         numeric not null default 0,
+  base_water       numeric not null default 0,
+  glazes           jsonb not null default '[]'::jsonb,   -- [{name, sourceIndex, sourceAmount, amountUnknown, additives:[{name,amount}]}]
+  additives        jsonb not null default '{}'::jsonb,   -- {name: pct}
+  photos           jsonb not null default '[]'::jsonb,   -- [{path, caption}]
+  legacy_id        bigint,                                -- 旧版 Date.now() id，仅用于导入去重
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create index notebook_entries_user_id_idx on public.notebook_entries(user_id);
+create unique index notebook_entries_legacy_id_uidx on public.notebook_entries(user_id, legacy_id) where legacy_id is not null;
+
+-- ── favourites ──
+create table public.favourites (
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  type             text not null check (type in ('base','additive')),
+  name             text not null,
+  note             text default '',
+  glaze_name       text,
+  base_ingredients jsonb not null default '[]'::jsonb,
+  base_dry         numeric not null default 0,
+  base_water       numeric not null default 0,
+  additives        jsonb not null default '{}'::jsonb,   -- {name: absolute_grams}
+  photos           jsonb not null default '[]'::jsonb,
+  legacy_id        bigint,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create index favourites_user_id_idx on public.favourites(user_id);
+create unique index favourites_legacy_id_uidx on public.favourites(user_id, legacy_id) where legacy_id is not null;
+
+-- ── history_entries ── (无图片，每用户自动只保留最近 50 条)
+create table public.history_entries (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  base_ingredients jsonb not null default '[]'::jsonb,
+  base_dry     numeric not null default 0,
+  base_water   numeric not null default 0,
+  glazes       jsonb not null default '[]'::jsonb,
+  glaze_states jsonb not null default '[]'::jsonb,       -- [{baseDry, additiveTotals}]
+  created_at   timestamptz not null default now()
+);
+create index history_entries_user_id_idx on public.history_entries(user_id);
+
+-- ── RLS：每个人只能读写自己的行 ──
+alter table public.notebook_entries enable row level security;
+alter table public.favourites        enable row level security;
+alter table public.history_entries   enable row level security;
+
+create policy "nb select own"  on public.notebook_entries for select using (auth.uid() = user_id);
+create policy "nb insert own"  on public.notebook_entries for insert with check (auth.uid() = user_id);
+create policy "nb update own"  on public.notebook_entries for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "nb delete own"  on public.notebook_entries for delete using (auth.uid() = user_id);
+
+create policy "fav select own" on public.favourites for select using (auth.uid() = user_id);
+create policy "fav insert own" on public.favourites for insert with check (auth.uid() = user_id);
+create policy "fav update own" on public.favourites for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "fav delete own" on public.favourites for delete using (auth.uid() = user_id);
+
+create policy "hist select own" on public.history_entries for select using (auth.uid() = user_id);
+create policy "hist insert own" on public.history_entries for insert with check (auth.uid() = user_id);
+create policy "hist delete own" on public.history_entries for delete using (auth.uid() = user_id);
+-- history 没有 update 策略：记录写入后不再修改
+
+-- ── 每用户历史记录只保留最近 50 条（对应旧版客户端 history.slice(0,50)）──
+create or replace function public.trim_history() returns trigger
+language plpgsql security definer as $$
+begin
+  delete from public.history_entries
+  where user_id = new.user_id
+    and id not in (
+      select id from public.history_entries
+      where user_id = new.user_id
+      order by created_at desc
+      limit 50
+    );
+  return new;
+end;
+$$;
+create trigger history_trim_after_insert
+after insert on public.history_entries
+for each row execute function public.trim_history();
+
+-- ── updated_at 自动维护 ──
+create or replace function public.set_updated_at() returns trigger
+language plpgsql as $$
+begin new.updated_at = now(); return new; end;
+$$;
+create trigger notebook_set_updated_at before update on public.notebook_entries
+  for each row execute function public.set_updated_at();
+create trigger favourites_set_updated_at before update on public.favourites
+  for each row execute function public.set_updated_at();
+
+-- ── Storage：私有 bucket + 按 user_id 分文件夹隔离 ──
+insert into storage.buckets (id, name, public) values ('glaze-photos', 'glaze-photos', false);
+
+create policy "photos select own" on storage.objects for select
+  using (bucket_id = 'glaze-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+create policy "photos insert own" on storage.objects for insert
+  with check (bucket_id = 'glaze-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+create policy "photos update own" on storage.objects for update
+  using (bucket_id = 'glaze-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+create policy "photos delete own" on storage.objects for delete
+  using (bucket_id = 'glaze-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- 路径约定：{user_id}/notebook/{record_id}/{uuid}.jpg
+--        或 {user_id}/favourites/{record_id}/{uuid}.jpg

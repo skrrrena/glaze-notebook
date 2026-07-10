@@ -1,0 +1,2269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>釉料配方计算器</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg: #f5f1eb;
+    --bg2: #ede8e0;
+    --bg3: #e4ddd3;
+    --ink: #2a2420;
+    --ink2: #6b5f57;
+    --ink3: #9c8e85;
+    --accent: #7a5c3a;
+    --accent2: #a07850;
+    --line: #d4ccc4;
+    --success: #4a6741;
+    --danger: #7a3a2e;
+    --card: #faf7f3;
+    --fav: #5a3e6e;
+    --fav-bg: #f0ebf6;
+    --fav-line: #d4c8e4;
+    --nb: #3a5c4a;
+    --nb-bg: #edf3ef;
+    --nb-line: #c4d9cc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Noto Serif SC', serif; background: var(--bg); color: var(--ink); min-height: 100vh; }
+
+  header {
+    background: var(--ink);
+    color: var(--bg);
+    padding: 1.6rem 2.5rem 1.3rem;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  header::before {
+    content: '釉';
+    position: absolute; right: 2rem; top: -0.5rem;
+    font-size: 9rem; font-weight: 300; opacity: 0.07;
+    color: var(--bg); pointer-events: none; user-select: none;
+  }
+  header h1 { font-size: 1.4rem; font-weight: 400; letter-spacing: 0.12em; }
+  header p { font-size: 0.75rem; opacity: 0.5; font-family: 'DM Mono', monospace; letter-spacing: 0.05em; }
+
+  /* tabs */
+  .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--card); }
+  .tab-btn {
+    padding: 10px 22px;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--ink3);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab-btn.active { color: var(--ink); border-bottom-color: var(--ink); }
+  .tab-btn:hover { color: var(--ink2); }
+  .tab-hist.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* layout */
+  .calc-layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    min-height: calc(100vh - 106px);
+  }
+  .panel-left {
+    background: var(--card);
+    border-right: 1px solid var(--line);
+    padding: 1.8rem;
+    overflow-y: auto;
+  }
+  .panel-right { background: var(--bg); padding: 2rem; overflow-y: auto; }
+
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+  .base-row {
+    display: grid;
+    grid-template-columns: 1fr 80px 28px;
+    gap: 6px; margin-bottom: 6px; align-items: center;
+  }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 0.82rem;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { border-color: var(--accent2); }
+  input[type=number] { font-family: 'DM Mono', monospace; }
+  textarea { resize: vertical; min-height: 56px; font-size: 0.78rem; line-height: 1.5; }
+
+  .btn-icon {
+    width: 28px; height: 28px;
+    border: 1px solid var(--line); border-radius: 4px;
+    background: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink3); font-size: 1rem; line-height: 1;
+    transition: all 0.12s;
+  }
+  .btn-icon:hover { background: var(--bg3); color: var(--danger); border-color: var(--danger); }
+
+  .btn-ghost {
+    width: 100%; padding: 7px;
+    background: none; border: 1px dashed var(--line); border-radius: 4px;
+    color: var(--ink3);
+    font-family: 'Noto Serif SC', serif; font-size: 0.78rem;
+    cursor: pointer; margin-top: 4px;
+    transition: all 0.12s; letter-spacing: 0.04em;
+  }
+  .btn-ghost:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent2); }
+
+  .water-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 1rem; }
+  .field-label { font-size: 0.72rem; color: var(--ink3); margin-bottom: 4px; letter-spacing: 0.04em; }
+
+  .glaze-card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; margin-bottom: 10px; overflow: hidden;
+  }
+  .glaze-card-head {
+    background: var(--bg2); padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .glaze-num { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--ink3); min-width: 20px; }
+  .glaze-card-body { padding: 12px 14px; }
+  .source-row { display: grid; grid-template-columns: 1fr 90px; gap: 6px; margin-bottom: 10px; }
+  .additive-row { display: grid; grid-template-columns: 1fr 80px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .source-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+  .source-unit-hint {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem;
+    color: var(--ink3); letter-spacing: 0.04em; margin-top: 3px;
+  }
+  .unknown-toggle {
+    display: flex; align-items: center; gap: 5px; margin-top: 4px;
+    font-size: 0.72rem; color: var(--ink3); cursor: pointer;
+    font-family: 'DM Mono', monospace; user-select: none;
+    letter-spacing: 0.03em;
+  }
+  .unknown-toggle input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
+  .amount-unknown-badge {
+    display: inline-block; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; padding: 4px 10px; border-radius: 4px;
+    background: var(--bg2); border: 1px dashed var(--line);
+    color: var(--ink3); letter-spacing: 0.06em; width: 100%;
+    text-align: center;
+  }
+
+  .calc-btn {
+    width: 100%; padding: 12px;
+    background: var(--ink); color: var(--bg);
+    border: none; border-radius: 6px;
+    font-family: 'Noto Serif SC', serif; font-size: 0.9rem;
+    letter-spacing: 0.1em; cursor: pointer; margin-top: 1.5rem;
+    transition: background 0.15s;
+  }
+  .calc-btn:hover { background: var(--accent); }
+
+  /* results */
+  .result-block {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; margin-bottom: 16px; overflow: hidden;
+    animation: fadeIn 0.25s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; } }
+  .result-head {
+    padding: 10px 16px; background: var(--ink); color: var(--bg);
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .result-head-left { display: flex; align-items: baseline; gap: 10px; }
+  .result-head strong { font-size: 0.95rem; font-weight: 400; letter-spacing: 0.06em; }
+  .result-head span { font-family: 'DM Mono', monospace; font-size: 0.7rem; opacity: 0.55; }
+
+  .save-btn {
+    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    padding: 3px 10px; border-radius: 3px;
+    background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8);
+    border: 1px solid rgba(255,255,255,0.2); cursor: pointer;
+    letter-spacing: 0.04em; transition: all 0.12s; white-space: nowrap;
+  }
+  .save-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
+  .save-btn.saved { background: rgba(180,210,170,0.25); color: #a8d4a0; border-color: rgba(168,212,160,0.4); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.08em; color: var(--ink3);
+    text-align: left; padding: 8px 16px;
+    background: var(--bg2); font-weight: 400;
+    border-bottom: 1px solid var(--line);
+  }
+  th:not(:first-child) { text-align: right; }
+  td {
+    padding: 7px 16px; border-bottom: 1px solid var(--line);
+    color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  td:not(:first-child) { text-align: right; font-family: 'DM Mono', monospace; font-size: 0.78rem; }
+  tr:last-child td { border-bottom: none; font-weight: 500; background: var(--bg2); }
+
+  .tag-add {
+    display: inline-block; font-size: 0.62rem;
+    font-family: 'DM Mono', monospace;
+    padding: 1px 6px; border-radius: 3px;
+    background: #e8f0e6; color: var(--success);
+    margin-left: 6px; letter-spacing: 0.04em; vertical-align: middle;
+  }
+  .pct-highlight { color: var(--accent); font-weight: 500; }
+
+  .empty-result {
+    text-align: center; padding: 4rem 2rem;
+    color: var(--ink3); font-size: 0.85rem; line-height: 2;
+  }
+  .empty-result .big { font-size: 3rem; opacity: 0.15; line-height: 1; margin-bottom: 1rem; }
+  .error-msg {
+    background: #fdf0ee; border: 1px solid #e8c4be;
+    border-radius: 6px; padding: 10px 16px;
+    color: var(--danger); font-size: 0.82rem; margin-bottom: 12px;
+  }
+  .divider { border: none; border-top: 1px solid var(--line); margin: 1.2rem 0; }
+
+  /* ── favourites panel ── */
+  .fav-panel { padding: 2rem; }
+  .fav-toolbar {
+    display: flex; gap: 8px; margin-bottom: 1.4rem; align-items: center;
+  }
+  .fav-toolbar-right { margin-left: auto; display: flex; gap: 8px; }
+  .io-btn {
+    font-size: 0.75rem; font-family: 'DM Mono', monospace;
+    padding: 6px 14px; border-radius: 4px; cursor: pointer;
+    letter-spacing: 0.04em; transition: all 0.12s;
+    border: 1px solid var(--line);
+  }
+  .io-btn-export { background: var(--card); color: var(--ink2); }
+  .io-btn-export:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink3); }
+  .io-btn-import { background: var(--card); color: var(--fav); border-color: var(--fav-line); }
+  .io-btn-import:hover { background: var(--fav-bg); border-color: var(--fav); }
+  .import-hint { font-size: 0.72rem; color: var(--ink3); font-family: 'DM Mono', monospace; }
+  .fav-empty {
+    text-align: center; padding: 4rem 2rem;
+    color: var(--ink3); font-size: 0.85rem; line-height: 2;
+  }
+  .fav-empty .big { font-size: 3rem; opacity: 0.12; margin-bottom: 1rem; }
+
+  .fav-card {
+    background: var(--card); border: 1px solid var(--fav-line);
+    border-radius: 8px; margin-bottom: 14px; overflow: hidden;
+    animation: fadeIn 0.2s ease;
+  }
+  .fav-card-head {
+    background: var(--fav-bg); border-bottom: 1px solid var(--fav-line);
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .fav-name {
+    flex: 1; font-size: 0.9rem; font-weight: 500;
+    color: var(--fav); letter-spacing: 0.04em;
+  }
+  .fav-date { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink3); }
+  .fav-actions { display: flex; gap: 6px; }
+  .fav-load-btn {
+    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    padding: 3px 10px; border-radius: 3px;
+    background: var(--fav-bg); color: var(--fav);
+    border: 1px solid var(--fav-line); cursor: pointer;
+    letter-spacing: 0.04em; transition: all 0.12s;
+  }
+  .fav-load-btn:hover { background: var(--fav); color: #fff; }
+  .fav-del-btn {
+    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    padding: 3px 8px; border-radius: 3px;
+    background: none; color: var(--ink3);
+    border: 1px solid var(--line); cursor: pointer;
+    transition: all 0.12s;
+  }
+  .fav-del-btn:hover { background: #fdf0ee; color: var(--danger); border-color: var(--danger); }
+
+  .fav-body { padding: 12px 16px; }
+  .fav-note { font-size: 0.78rem; color: var(--ink2); line-height: 1.6; margin-bottom: 10px; font-style: italic; }
+  .fav-summary { font-size: 0.78rem; color: var(--ink3); font-family: 'DM Mono', monospace; line-height: 1.8; }
+  .fav-tag {
+    display: inline-block; font-size: 0.65rem;
+    font-family: 'DM Mono', monospace;
+    padding: 1px 7px; border-radius: 3px; margin: 2px 3px 2px 0;
+    background: var(--bg2); color: var(--ink2);
+    border: 1px solid var(--line);
+  }
+  .fav-count { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink3); }
+
+
+  /* ── notebook ── */
+  .nb-panel { padding: 2rem; }
+  .nb-toolbar { display: flex; gap: 8px; margin-bottom: 1.4rem; align-items: center; }
+  .nb-toolbar-right { margin-left: auto; display: flex; gap: 8px; }
+  .nb-new-btn {
+    font-size: 0.8rem; font-family: 'Noto Serif SC', serif;
+    padding: 7px 18px; border-radius: 5px; cursor: pointer;
+    background: var(--nb); color: #fff; border: none;
+    letter-spacing: 0.06em; transition: opacity 0.12s;
+  }
+  .nb-new-btn:hover { opacity: 0.85; }
+  .nb-card {
+    background: var(--card);
+    border: 1px solid var(--nb-line);
+    border-left: 3px solid var(--nb);
+    border-radius: 8px; margin-bottom: 14px;
+    overflow: hidden; animation: fadeIn 0.2s ease;
+  }
+  .nb-card-head {
+    background: var(--nb-bg); border-bottom: 1px solid var(--nb-line);
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .nb-num {
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    color: #fff; background: var(--nb);
+    padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+  }
+  .nb-name {
+    flex: 1; font-size: 0.9rem; font-weight: 500;
+    color: var(--nb); letter-spacing: 0.04em;
+  }
+  .nb-date { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink3); }
+  .nb-actions { display: flex; gap: 6px; }
+  .nb-load-btn {
+    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    padding: 3px 10px; border-radius: 3px;
+    background: var(--nb-bg); color: var(--nb);
+    border: 1px solid var(--nb-line); cursor: pointer;
+    letter-spacing: 0.04em; transition: all 0.12s;
+  }
+  .nb-load-btn:hover { background: var(--nb); color: #fff; }
+  .nb-del-btn {
+    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    padding: 3px 8px; border-radius: 3px;
+    background: none; color: var(--ink3);
+    border: 1px solid var(--line); cursor: pointer; transition: all 0.12s;
+  }
+  .nb-del-btn:hover { background: #fdf0ee; color: var(--danger); border-color: var(--danger); }
+  .nb-body { padding: 14px 16px; }
+  .nb-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .nb-ingredient-tag {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    padding: 3px 9px; border-radius: 3px;
+    background: var(--bg2); color: var(--ink2); border: 1px solid var(--line);
+  }
+  .nb-additive-tag {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    padding: 3px 9px; border-radius: 3px;
+    background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line);
+  }
+  .nb-note {
+    font-size: 0.78rem; color: var(--ink2); line-height: 1.6;
+    font-style: italic; margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid var(--nb-line);
+    cursor: pointer;
+  }
+  .nb-add-note {
+    font-size: 0.75rem; color: var(--ink3); cursor: pointer;
+    font-family: 'DM Mono', monospace; margin-top: 8px;
+    padding-top: 8px; border-top: 1px solid var(--nb-line);
+  }
+  .nb-section-label {
+    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    color: var(--ink3); letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .nb-empty {
+    text-align: center; padding: 4rem 2rem;
+    color: var(--ink3); font-size: 0.85rem; line-height: 2;
+  }
+  .nb-empty .big { font-size: 3rem; opacity: 0.12; margin-bottom: 1rem; }
+
+  /* notebook modal */
+  .nbmodal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(42,36,32,0.45);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .nbmodal-overlay.open { display: flex; }
+  .nbmodal {
+    background: var(--card); border-radius: 10px;
+    border: 1px solid var(--nb-line); border-top: 3px solid var(--nb);
+    padding: 1.8rem; width: 420px; max-width: 94vw;
+    animation: fadeIn 0.18s ease; max-height: 90vh; overflow-y: auto;
+  }
+  .nbmodal h3 { font-size: 1rem; font-weight: 400; letter-spacing: 0.06em; margin-bottom: 1.2rem; color: var(--nb); }
+  .nbmodal .field-label { margin-top: 10px; margin-bottom: 4px; font-size: 0.72rem; color: var(--ink3); }
+  .nbmodal-row { display: grid; grid-template-columns: 100px 1fr; gap: 8px; margin-bottom: 8px; }
+  .nbmodal-btns { display: flex; gap: 8px; margin-top: 1.4rem; }
+  .nbmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: 'Noto Serif SC', serif; font-size: 0.82rem; letter-spacing: 0.04em; }
+  .nbmodal-confirm { background: var(--nb); color: #fff; border: none; }
+  .nbmodal-confirm:hover { opacity: 0.85; }
+  .nbmodal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
+  .nbmodal-cancel:hover { background: var(--bg2); }
+  .nb-additive-editor { margin-top: 8px; }
+  .nb-additive-edit-row { display: grid; grid-template-columns: 1fr 90px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+
+  /* update-to-notebook picker modal */
+  .updmodal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(42,36,32,0.45);
+    z-index: 150; align-items: center; justify-content: center;
+  }
+  .updmodal-overlay.open { display: flex; }
+  .updmodal {
+    background: var(--card); border-radius: 10px;
+    border: 1px solid var(--nb-line); border-top: 3px solid var(--nb);
+    padding: 1.6rem; width: 500px; max-width: 96vw;
+    animation: fadeIn 0.18s ease; max-height: 90vh; overflow-y: auto;
+  }
+  .updmodal h3 { font-size: 0.95rem; font-weight: 400; letter-spacing: 0.06em; margin-bottom: 0.3rem; color: var(--nb); }
+  .updmodal-hint { font-size: 0.72rem; color: var(--ink3); margin-bottom: 1rem; font-family: 'DM Mono', monospace; }
+  .updmodal-pair {
+    display: grid; grid-template-columns: auto 1fr auto 1fr;
+    align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 6px; margin-bottom: 6px;
+    border: 1px solid var(--line); background: var(--bg);
+    transition: all 0.12s;
+  }
+  .updmodal-pair.active { border-color: var(--nb); background: var(--nb-bg); }
+  .updmodal-pair.active .updmodal-arrow { color: var(--nb); }
+  .updmodal-pair input[type=checkbox] { accent-color: var(--nb); cursor: pointer; width:15px; height:15px; }
+  .updmodal-glaze-name { font-size: 0.84rem; font-weight: 500; }
+  .updmodal-arrow { color: var(--ink3); font-size: 0.8rem; text-align: center; }
+  .updmodal-nb-select {
+    font-family: 'Noto Serif SC', serif; font-size: 0.78rem;
+    padding: 4px 6px; border-radius: 4px;
+    border: 1px solid var(--line); background: var(--bg);
+    color: var(--ink); width: 100%; outline: none;
+    cursor: pointer;
+  }
+  .updmodal-nb-select:focus { border-color: var(--nb); }
+  .updmodal-nb-select:disabled { opacity: 0.35; cursor: default; }
+  .updmodal-btns { display: flex; gap: 8px; }
+  .updmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: 'Noto Serif SC', serif; font-size: 0.82rem; letter-spacing: 0.04em; }
+  .updmodal-confirm { background: var(--nb); color: #fff; border: none; }
+  .updmodal-confirm:hover { opacity: 0.85; }
+  .updmodal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
+  .updmodal-cancel:hover { background: var(--bg2); }
+
+  /* save modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(42,36,32,0.45);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 10px;
+    border: 1px solid var(--line);
+    padding: 1.8rem; width: 360px; max-width: 90vw;
+    animation: fadeIn 0.18s ease;
+  }
+  .modal h3 { font-size: 1rem; font-weight: 400; letter-spacing: 0.06em; margin-bottom: 1rem; }
+  .modal .field-label { margin-top: 12px; margin-bottom: 4px; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 1.2rem; }
+  .modal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: 'Noto Serif SC', serif; font-size: 0.82rem; letter-spacing: 0.04em; }
+  .modal-confirm { background: var(--ink); color: var(--bg); border: none; }
+  .modal-confirm:hover { background: var(--accent); }
+  .modal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
+  .modal-cancel:hover { background: var(--bg2); }
+
+  /* ── photo gallery ── */
+  .photo-gallery {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .photo-gallery.nb-style { border-top-color: var(--nb-line); }
+  .photo-gallery.fav-style { border-top-color: var(--fav-line); }
+
+  /* carousel strip */
+  .photo-strip {
+    display: flex; gap: 8px; overflow-x: auto;
+    padding-bottom: 6px; align-items: flex-start;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  }
+  .photo-strip::-webkit-scrollbar { height: 4px; }
+  .photo-strip::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+
+  .photo-item {
+    flex-shrink: 0; width: 84px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .photo-thumb-wrap {
+    position: relative; width: 84px; height: 84px; border-radius: 6px;
+    overflow: hidden; border: 1px solid var(--line); background: var(--bg2);
+    cursor: pointer;
+  }
+  .photo-thumb-wrap img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform 0.15s;
+  }
+  .photo-thumb-wrap:hover img { transform: scale(1.04); }
+  .photo-del-btn {
+    position: absolute; top: 3px; right: 3px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: rgba(42,36,32,0.72); color: #fff;
+    border: none; cursor: pointer; font-size: 0.7rem; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.12s;
+  }
+  .photo-thumb-wrap:hover .photo-del-btn { opacity: 1; }
+  .photo-caption-input {
+    width: 84px; font-size: 0.65rem; font-family: 'DM Mono', monospace;
+    padding: 2px 5px; border-radius: 3px;
+    background: var(--bg); border: 1px solid var(--line);
+    color: var(--ink2); outline: none;
+    transition: border-color 0.12s;
+  }
+  .photo-caption-input:focus { border-color: var(--accent2); }
+  .photo-caption-input::placeholder { color: var(--ink3); opacity: 0.7; }
+
+  .photo-add-btn {
+    flex-shrink: 0;
+    width: 84px; height: 84px; border-radius: 6px;
+    border: 1px dashed var(--line); background: none;
+    color: var(--ink3); cursor: pointer; font-size: 1.5rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.12s;
+  }
+  .photo-add-btn:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent2); }
+  .photo-add-btn.nb { border-color: var(--nb-line); color: var(--nb); }
+  .photo-add-btn.nb:hover { background: var(--nb-bg); border-color: var(--nb); }
+  .photo-add-btn.fav { border-color: var(--fav-line); color: var(--fav); }
+  .photo-add-btn.fav:hover { background: var(--fav-bg); border-color: var(--fav); }
+  .photo-add-btn.drag-over {
+    background: var(--bg2); border-style: solid;
+    border-color: var(--accent2); color: var(--accent);
+    transform: scale(1.04); transition: all 0.1s;
+  }
+
+  /* lightbox carousel */
+  .lightbox {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.88); z-index: 200;
+    flex-direction: column; align-items: center; justify-content: center;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox-img-wrap {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    width: 100%; flex: 1;
+  }
+  .lightbox img {
+    max-width: 88vw; max-height: 78vh;
+    border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    display: block;
+  }
+  .lightbox-close {
+    position: fixed; top: 1.1rem; right: 1.4rem;
+    color: rgba(255,255,255,0.75); font-size: 1.8rem;
+    cursor: pointer; line-height: 1; background: none; border: none; z-index: 10;
+  }
+  .lightbox-close:hover { color: #fff; }
+  .lightbox-nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    background: rgba(255,255,255,0.12); color: #fff;
+    border: none; cursor: pointer; font-size: 1.6rem;
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s; z-index: 10;
+  }
+  .lightbox-nav:hover { background: rgba(255,255,255,0.25); }
+  .lightbox-nav.prev { left: 1rem; }
+  .lightbox-nav.next { right: 1rem; }
+  .lightbox-nav:disabled { opacity: 0.2; cursor: default; }
+  .lightbox-footer {
+    padding: 0.8rem 1.5rem 1.2rem;
+    text-align: center; width: 100%; max-width: 600px;
+  }
+  .lightbox-caption {
+    color: rgba(255,255,255,0.9); font-size: 0.9rem;
+    font-family: 'Noto Serif SC', serif; letter-spacing: 0.04em;
+    min-height: 1.4em;
+  }
+  .lightbox-counter {
+    color: rgba(255,255,255,0.4); font-family: 'DM Mono', monospace;
+    font-size: 0.7rem; margin-top: 4px; letter-spacing: 0.08em;
+  }
+  .lightbox-dots {
+    display: flex; gap: 6px; justify-content: center; margin-top: 8px;
+  }
+  .lightbox-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,0.25); border: none; cursor: pointer;
+    padding: 0; transition: background 0.15s;
+  }
+  .lightbox-dot.active { background: rgba(255,255,255,0.85); }
+
+  @media (max-width: 700px) {
+    .calc-layout { grid-template-columns: 1fr; }
+    .panel-left { border-right: none; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>釉料配方计算器</h1>
+    <p>glaze recipe calculator · additive tracking</p>
+  </div>
+  <div id="auth-status-bar" style="font-family:'DM Mono',monospace;font-size:0.72rem;display:flex;align-items:center;gap:10px;opacity:0.75;position:relative;z-index:1">
+    <span id="user-email"></span>
+    <button id="signout-btn" onclick="signOut()" style="display:none;background:none;border:1px solid rgba(245,241,235,0.3);color:inherit;border-radius:4px;padding:3px 10px;cursor:pointer;font-family:inherit;font-size:inherit">退出登录</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('calc',this)">配方计算</button>
+  <button class="tab-btn tab-hist" onclick="switchTab('hist',this)">历史记录 <span id="hist-count-badge" class="fav-count"></span></button>
+  <button class="tab-btn tab-nb" onclick="switchTab('nb',this)">配方本 <span id="nb-count-badge" class="fav-count"></span></button>
+  <button class="tab-btn tab-fav" onclick="switchTab('fav',this)">收藏夹 <span id="fav-count-badge" class="fav-count"></span></button>
+</div>
+
+<!-- calc tab -->
+<div class="tab-panel active" id="tab-calc">
+  <div class="calc-layout">
+    <div class="panel-left">
+      <div class="section-label">基础釉原料</div>
+      <div id="base-ingredients-wrap"></div>
+      <button class="btn-ghost" onclick="addBase()">＋ 添加原料</button>
+
+      <hr class="divider">
+
+      <div class="section-label">基础釉用量</div>
+      <div class="water-row">
+        <div>
+          <div class="field-label">干料总重 (g)</div>
+          <input type="number" id="base-dry" value="200" min="0" step="1">
+        </div>
+        <div>
+          <div class="field-label">加水量 (g)</div>
+          <input type="number" id="base-water" value="160" min="0" step="1">
+        </div>
+      </div>
+      <button class="btn-ghost" style="margin-top:10px;border-style:solid;color:var(--fav);border-color:var(--fav-line);" onclick="openBaseModal()">☆ 收藏此基础釉</button>
+      <button class="btn-ghost" style="margin-top:6px;border-style:solid;color:var(--nb);border-color:var(--nb-line);" onclick="openBaseNbModal()">册 存入配方本</button>
+
+      <hr class="divider">
+
+      <div class="section-label">釉料步骤</div>
+      <div id="glazes-wrap"></div>
+      <button class="btn-ghost" onclick="addGlaze()">＋ 新增釉料步骤</button>
+
+      <button class="calc-btn" onclick="calculate()">计　算　配　比</button>
+    </div>
+
+    <div class="panel-right">
+      <div id="results">
+        <div class="empty-result">
+          <div class="big">釉</div>
+          填写左侧配方后<br>点击「计算配比」查看结果
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- history tab -->
+<div class="tab-panel" id="tab-hist">
+  <div class="fav-panel">
+    <div class="fav-toolbar">
+      <span class="import-hint" id="hist-toolbar-count"></span>
+      <div class="fav-toolbar-right">
+        <button class="io-btn io-btn-export" onclick="clearHistory()" style="color:var(--danger);border-color:#e8c4be">清空历史</button>
+      </div>
+    </div>
+    <div id="hist-list"></div>
+  </div>
+</div>
+
+<!-- notebook tab -->
+<div class="tab-panel" id="tab-nb">
+  <div class="nb-panel">
+    <div class="nb-toolbar">
+      <span class="import-hint" id="nb-toolbar-count"></span>
+      <div class="nb-toolbar-right">
+        <button class="io-btn io-btn-export" onclick="exportNotebook()">↓ 导出 JSON</button>
+        <button class="io-btn io-btn-import" onclick="document.getElementById('nb-import-input').click()">↑ 导入 JSON</button>
+        <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
+        <button class="nb-new-btn" onclick="openNbModal(null, null)">＋ 手动新建</button>
+      </div>
+    </div>
+    <div id="nb-list"></div>
+  </div>
+</div>
+
+<!-- favourites tab -->
+<div class="tab-panel" id="tab-fav">
+  <div class="fav-panel">
+    <div class="fav-toolbar">
+      <span class="import-hint" id="fav-toolbar-count"></span>
+      <div class="fav-toolbar-right">
+        <button class="io-btn io-btn-export" onclick="exportFavourites()">↓ 导出 JSON</button>
+        <button class="io-btn io-btn-import" onclick="document.getElementById('import-input').click()">↑ 导入 JSON</button>
+        <input type="file" id="import-input" accept=".json" style="display:none" onchange="importFavourites(this)">
+      </div>
+    </div>
+    <div id="fav-list"></div>
+  </div>
+</div>
+
+<!-- auth modal -->
+<div class="modal-overlay open" id="auth-modal">
+  <div class="modal">
+    <h3>登录</h3>
+    <div style="font-size:0.78rem;color:var(--ink2);line-height:1.6;margin-bottom:8px">
+      输入邮箱，我们会发一个登录链接过去。仅限已被邀请的邮箱可以登录。
+    </div>
+    <div class="field-label">邮箱</div>
+    <input type="text" id="auth-email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')sendMagicLink()">
+    <div class="modal-btns">
+      <button class="modal-confirm" style="flex:none;width:100%" onclick="sendMagicLink()">发送登录链接</button>
+    </div>
+    <div id="auth-status" style="margin-top:10px;font-size:0.78rem;color:var(--ink3);min-height:1.2em"></div>
+  </div>
+</div>
+
+<!-- notebook modal -->
+<div class="nbmodal-overlay" id="nb-modal" onclick="closeNbModal(event)">
+  <div class="nbmodal">
+    <h3 id="nb-modal-title">存入配方本</h3>
+    <input type="hidden" id="nb-modal-edit-index" value="">
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">编号</div>
+    <input type="text" id="nb-modal-num" placeholder="如：201、202A、试验1" maxlength="20" style="width:160px">
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">配方名称</div>
+    <input type="text" id="nb-modal-name" placeholder="如：大结晶基釉、冰蓝结晶" maxlength="40">
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">基础原料（份数）</div>
+    <div id="nb-modal-base-wrap" style="margin-bottom:4px"></div>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">添加剂（外加%，相对基础干料）</div>
+    <div id="nb-modal-add-wrap"></div>
+    <button class="btn-ghost" onclick="nbModalAddAdditive()" style="font-size:0.74rem;margin-top:4px">＋ 添加剂</button>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">备注</div>
+    <textarea id="nb-modal-note" placeholder="颜色效果、烧成温度、观察结果…" style="min-height:64px"></textarea>
+    <button class="btn-ghost" onclick="insertBlankLine('nb-modal-note')" style="font-size:0.74rem;margin-top:4px;color:var(--ink3)">↵ 插入空行</button>
+    <div class="nbmodal-btns">
+      <button class="nbmodal-cancel" onclick="closeNbModal()">取消</button>
+      <button class="nbmodal-confirm" onclick="confirmNbSave()">存入配方本</button>
+    </div>
+  </div>
+</div>
+
+<!-- save modal -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal">
+    <h3 id="modal-title">收藏配方</h3>
+    <input type="hidden" id="modal-type" value="additive">
+    <div class="field-label">配方名称</div>
+    <input type="text" id="modal-name" placeholder="如：蓝色大结晶釉 205号" maxlength="40">
+    <div class="field-label">备注（可选）</div>
+    <textarea id="modal-note" placeholder="烧成温度、效果描述、下次调整方向…"></textarea>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeModal()">取消</button>
+      <button class="modal-confirm" onclick="confirmSave()">保存到收藏夹</button>
+    </div>
+  </div>
+</div>
+
+<!-- update-to-notebook picker modal -->
+<div class="updmodal-overlay" id="upd-modal" onclick="closeUpdModal(event)">
+  <div class="updmodal">
+    <h3>批量更新到配方本</h3>
+    <div class="updmodal-hint">勾选要更新的釉，并选择对应的配方本条目</div>
+    <div id="upd-modal-pairs"></div>
+    <div class="updmodal-btns" style="margin-top:1.2rem">
+      <button class="updmodal-cancel" onclick="closeUpdModal()">取消</button>
+      <button class="updmodal-confirm" id="upd-confirm-btn" onclick="confirmUpdateToNb()">覆盖更新</button>
+    </div>
+  </div>
+</div>
+
+<!-- lightbox -->
+<!-- lightbox carousel -->
+<div class="lightbox" id="lightbox" onclick="lightboxBgClick(event)">
+  <button class="lightbox-close" onclick="closeLightbox()">×</button>
+  <div class="lightbox-img-wrap">
+    <button class="lightbox-nav prev" id="lb-prev" onclick="lbNav(-1)">&#8249;</button>
+    <img id="lightbox-img" src="" alt="">
+    <button class="lightbox-nav next" id="lb-next" onclick="lbNav(1)">&#8250;</button>
+  </div>
+  <div class="lightbox-footer">
+    <div class="lightbox-caption" id="lb-caption"></div>
+    <div class="lightbox-counter" id="lb-counter"></div>
+    <div class="lightbox-dots" id="lb-dots"></div>
+  </div>
+</div>
+<!-- hidden photo inputs -->
+<input type="file" id="nb-photo-input" accept="image/*" multiple style="display:none" onchange="handleNbPhotoUpload(this)">
+<input type="file" id="fav-photo-input" accept="image/*" multiple style="display:none" onchange="handleFavPhotoUpload(this)">
+
+<script>
+// ── Supabase client ──
+const SUPABASE_URL = 'https://uthfsgwtakbbgancsvsa.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0aGZzZ3d0YWtiYmdhbmNzdnNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NDgyMzMsImV4cCI6MjA5OTIyNDIzM30.JyxbkIxTVFJceJvmzQNpY_J3ZA2RLxfAJ-A8FhKQjxM';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const PHOTO_BUCKET = 'glaze-photos';
+const PHOTO_SIZE = 800; // max dimension px for resizing
+let currentUserId = null;
+
+let baseIngredients = [
+  {name:'氧化锌', parts:22},
+  {name:'烧滑石', parts:0},
+  {name:'高岭土', parts:6},
+  {name:'碳酸钡', parts:0},
+  {name:'石英', parts:22},
+  {name:'钾长石', parts:40},
+  {name:'方解石', parts:10},
+];
+
+let glazes = [
+  { name:'202号', sourceIndex:-1, sourceAmount:78, amountUnknown:false, additives:[{name:'氧化钴', amount:0.1}] },
+  { name:'204号', sourceIndex:0, sourceAmount:53, amountUnknown:false, additives:[{name:'轻质碳酸镁', amount:0.6}] },
+  { name:'205号', sourceIndex:1, sourceAmount:44.4, amountUnknown:false, additives:[{name:'轻质碳酸镁', amount:0.8}] },
+  { name:'206号', sourceIndex:2, sourceAmount:35.8, amountUnknown:false, additives:[{name:'氧化铜', amount:0.1}] },
+];
+
+let favourites = [];
+let history = [];
+let notebook = [];
+let nbModalAdditives = [];
+let pendingSaveIndex = null;
+let lastGlazeStates = [];
+
+// ── auth ──
+async function sendMagicLink() {
+  const email = document.getElementById('auth-email').value.trim();
+  const status = document.getElementById('auth-status');
+  if(!email) { status.textContent = '请输入邮箱'; return; }
+  status.textContent = '发送中…';
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+  status.textContent = error ? ('出错：' + error.message) : '登录链接已发送，请查收邮箱';
+}
+function signOut() { sb.auth.signOut(); }
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    currentUserId = session.user.id;
+    document.getElementById('auth-modal').classList.remove('open');
+    document.getElementById('user-email').textContent = session.user.email;
+    document.getElementById('signout-btn').style.display = '';
+    boot();
+  } else {
+    currentUserId = null;
+    document.getElementById('auth-modal').classList.add('open');
+    document.getElementById('user-email').textContent = '';
+    document.getElementById('signout-btn').style.display = 'none';
+  }
+});
+
+// ── row <-> in-memory record shape ──
+function fmtDate(iso) { return new Date(iso).toLocaleDateString('zh-CN'); }
+function fmtDateTime(iso) { return new Date(iso).toLocaleString('zh-CN'); }
+
+function rowToNotebook(row) {
+  return {
+    id: row.id, legacyId: row.legacy_id, num: row.num||'', name: row.name, note: row.note||'',
+    baseIngredients: row.base_ingredients||[], baseDry: row.base_dry||0, baseWater: row.base_water||0,
+    glazes: row.glazes||[], additives: row.additives||{},
+    photos: (row.photos||[]).map(p=>({...p})),
+    savedAt: fmtDate(row.updated_at || row.created_at),
+  };
+}
+function rowToFavourite(row) {
+  return {
+    id: row.id, legacyId: row.legacy_id, name: row.name, note: row.note||'', type: row.type,
+    glazeName: row.glaze_name, baseIngredients: row.base_ingredients||[],
+    baseDry: row.base_dry||0, baseWater: row.base_water||0, additives: row.additives||{},
+    photos: (row.photos||[]).map(p=>({...p})),
+    savedAt: fmtDate(row.created_at),
+  };
+}
+function rowToHistory(row) {
+  return {
+    id: row.id, savedAt: fmtDateTime(row.created_at),
+    baseIngredients: row.base_ingredients||[], baseDry: row.base_dry||0, baseWater: row.base_water||0,
+    glazes: row.glazes||[], glazeStates: row.glaze_states||[],
+  };
+}
+
+// ── boot: fetch everything for the signed-in user, then render ──
+async function boot() {
+  const [nbRes, favRes, histRes] = await Promise.all([
+    sb.from('notebook_entries').select('*').order('created_at', {ascending:false}),
+    sb.from('favourites').select('*').order('created_at', {ascending:false}),
+    sb.from('history_entries').select('*').order('created_at', {ascending:false}).limit(50),
+  ]);
+  notebook = (nbRes.data||[]).map(rowToNotebook);
+  favourites = (favRes.data||[]).map(rowToFavourite);
+  history = (histRes.data||[]).map(rowToHistory);
+
+  await Promise.all([resolvePhotoUrls(notebook), resolvePhotoUrls(favourites)]);
+
+  renderBase();
+  renderGlazes();
+  updateFavBadge();
+  updateHistBadge();
+  updateNbBadge();
+  renderNotebook();
+  renderFavourites();
+  renderHistory();
+}
+
+// ── photo storage (Supabase Storage) ──
+async function resolvePhotoUrls(records) {
+  const allPaths = [];
+  records.forEach(r => (r.photos||[]).forEach(p => { if(p.path) allPaths.push(p.path); }));
+  if(!allPaths.length) return;
+  const { data, error } = await sb.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600);
+  if(error || !data) return;
+  const urlMap = {};
+  data.forEach(d => { if(d.signedUrl) urlMap[d.path] = d.signedUrl; });
+  records.forEach(r => (r.photos||[]).forEach(p => { if(p.path) p.src = urlMap[p.path] || ''; }));
+}
+
+function _blobFromDataURL(dataURL) {
+  const [header, base64] = dataURL.split(',');
+  const mime = (header.match(/data:(.*);base64/)||[])[1] || 'image/jpeg';
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], {type: mime});
+}
+
+function _recordsForTable(table) { return table === 'notebook_entries' ? notebook : favourites; }
+function _findRecord(table, id) { return _recordsForTable(table).find(r => r.id === id); }
+
+async function savePhotosField(table, id, photos) {
+  const clean = photos.map(p => ({path:p.path, caption:p.caption||''}));
+  await sb.from(table).update({photos: clean}).eq('id', id);
+}
+
+async function deleteAllPhotosForRecord(table, record) {
+  const paths = (record.photos||[]).map(p=>p.path).filter(Boolean);
+  if(paths.length) await sb.storage.from(PHOTO_BUCKET).remove(paths);
+}
+
+function resizeAndEncode(file, maxPx, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if(w > maxPx || h > maxPx) {
+        if(w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality || 0.75));
+    };
+    img.src = url;
+  });
+}
+
+// ── lightbox carousel ──
+let lbPhotos = [];   // [{src, caption}]
+let lbIndex = 0;
+
+function openLightbox(photosArr, startIdx) {
+  lbPhotos = photosArr;
+  lbIndex = startIdx || 0;
+  lbRender();
+  document.getElementById('lightbox').classList.add('open');
+  document.addEventListener('keydown', lbKeyHandler);
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.removeEventListener('keydown', lbKeyHandler);
+}
+function lightboxBgClick(e) {
+  if(e.target === document.getElementById('lightbox')) closeLightbox();
+}
+function lbKeyHandler(e) {
+  if(e.key === 'ArrowLeft') lbNav(-1);
+  else if(e.key === 'ArrowRight') lbNav(1);
+  else if(e.key === 'Escape') closeLightbox();
+}
+function lbNav(dir) {
+  lbIndex = Math.max(0, Math.min(lbPhotos.length - 1, lbIndex + dir));
+  lbRender();
+}
+function lbRender() {
+  const p = lbPhotos[lbIndex];
+  document.getElementById('lightbox-img').src = p.src;
+  document.getElementById('lb-caption').textContent = p.caption || '';
+  document.getElementById('lb-counter').textContent =
+    lbPhotos.length > 1 ? `${lbIndex + 1} / ${lbPhotos.length}` : '';
+  document.getElementById('lb-prev').disabled = lbIndex === 0;
+  document.getElementById('lb-next').disabled = lbIndex === lbPhotos.length - 1;
+  // dots
+  const dotsEl = document.getElementById('lb-dots');
+  if(lbPhotos.length > 1) {
+    dotsEl.innerHTML = lbPhotos.map((_,i) =>
+      `<button class="lightbox-dot${i===lbIndex?' active':''}" onclick="lbIndex=${i};lbRender()"></button>`
+    ).join('');
+  } else {
+    dotsEl.innerHTML = '';
+  }
+}
+
+async function updatePhotoCaption(table, id, idx, caption) {
+  const record = _findRecord(table, id);
+  if(!record || !record.photos[idx]) return;
+  record.photos[idx].caption = caption;
+  await savePhotosField(table, id, record.photos);
+  if(lbPhotos.length && lbIndex === idx) {
+    lbPhotos[idx].caption = caption;
+    document.getElementById('lb-caption').textContent = caption;
+  }
+}
+
+// ── shared photo upload helper ──
+async function uploadPhotos(table, id, files, rerenderFn) {
+  const record = _findRecord(table, id);
+  if(!record) return;
+  const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+  if(!imageFiles.length) return;
+  const encoded = await Promise.all(imageFiles.map(f => resizeAndEncode(f, PHOTO_SIZE)));
+  const folder = table === 'notebook_entries' ? 'notebook' : 'favourites';
+  const newEntries = [];
+  for (const dataURL of encoded) {
+    const path = `${currentUserId}/${folder}/${id}/${crypto.randomUUID()}.jpg`;
+    const { error } = await sb.storage.from(PHOTO_BUCKET).upload(path, _blobFromDataURL(dataURL), {contentType:'image/jpeg'});
+    if(error) { alert('图片上传失败：'+error.message); continue; }
+    newEntries.push({path, caption:''});
+  }
+  record.photos = [...(record.photos||[]), ...newEntries];
+  await resolvePhotoUrls([record]);
+  await savePhotosField(table, id, record.photos);
+  rerenderFn();
+}
+
+async function deletePhoto(table, id, idx, rerenderFn) {
+  const record = _findRecord(table, id);
+  if(!record) return;
+  const photo = record.photos[idx];
+  if(photo?.path) await sb.storage.from(PHOTO_BUCKET).remove([photo.path]);
+  record.photos.splice(idx, 1);
+  await savePhotosField(table, id, record.photos);
+  rerenderFn();
+}
+
+// ── notebook photos ──
+let nbPhotoTargetId = null;
+function triggerNbPhoto(id) {
+  nbPhotoTargetId = id;
+  const input = document.getElementById('nb-photo-input');
+  input.value = '';
+  input.click();
+}
+async function handleNbPhotoUpload(input) {
+  if(!nbPhotoTargetId || !input.files.length) return;
+  await uploadPhotos('notebook_entries', nbPhotoTargetId, input.files, renderNotebook);
+}
+async function deleteNbPhoto(id, idx) {
+  await deletePhoto('notebook_entries', id, idx, renderNotebook);
+}
+
+// ── favourites photos ──
+let favPhotoTargetId = null;
+function triggerFavPhoto(id) {
+  favPhotoTargetId = id;
+  const input = document.getElementById('fav-photo-input');
+  input.value = '';
+  input.click();
+}
+async function handleFavPhotoUpload(input) {
+  if(!favPhotoTargetId || !input.files.length) return;
+  await uploadPhotos('favourites', favPhotoTargetId, input.files, renderFavourites);
+}
+async function deleteFavPhoto(id, idx) {
+  await deletePhoto('favourites', id, idx, renderFavourites);
+}
+
+// global registry so onclick handlers can reference photos safely
+const _photoRegistry = {};
+
+function _attachDragDrop(btn, table, id, rerenderFn) {
+  btn.addEventListener('dragover', e => {
+    e.preventDefault(); e.stopPropagation();
+    btn.classList.add('drag-over');
+  });
+  btn.addEventListener('dragleave', e => {
+    e.stopPropagation();
+    btn.classList.remove('drag-over');
+  });
+  btn.addEventListener('drop', async e => {
+    e.preventDefault(); e.stopPropagation();
+    btn.classList.remove('drag-over');
+    const files = e.dataTransfer?.files;
+    if(files?.length) await uploadPhotos(table, id, files, rerenderFn);
+  });
+}
+
+function renderPhotoGallery(photos, table, id, styleClass, triggerFn, deleteFn) {
+  const regKey = table + ':' + id;
+  _photoRegistry[regKey] = photos;
+
+  const thumbs = photos.map((p, i) => {
+    const cap = (p.caption||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    return `
+    <div class="photo-item">
+      <div class="photo-thumb-wrap" onclick="_openPhotoLb('${regKey}',${i})" title="点击查看大图">
+        <img src="${p.src||''}" alt="${cap}">
+        <button class="photo-del-btn" onclick="event.stopPropagation();${deleteFn}('${id}',${i})" title="删除">×</button>
+      </div>
+      <input class="photo-caption-input" type="text" value="${cap}" placeholder="图片名称…"
+        oninput="updatePhotoCaption('${table}','${id}',${i},this.value)" maxlength="30">
+    </div>`;
+  }).join('');
+
+  // Determine rerender function name from table
+  const rerenderFnName = table === 'notebook_entries' ? 'renderNotebook' : 'renderFavourites';
+  const addBtnId = `photo-add-${table}-${id}`;
+  const addBtn = `<div class="photo-item">
+      <button id="${addBtnId}" class="photo-add-btn ${styleClass}"
+        onclick="${triggerFn}('${id}')" title="拖拽图片到这里，或点击上传">＋</button>
+     </div>`;
+
+  requestAnimationFrame(() => {
+    const btn = document.getElementById(addBtnId);
+    if(btn) _attachDragDrop(btn, table, id, window[rerenderFnName]);
+  });
+
+  return `<div class="photo-gallery ${styleClass}-style"><div class="photo-strip">${thumbs}${addBtn}</div></div>`;
+}
+
+function _openPhotoLb(regKey, idx) {
+  const photos = _photoRegistry[regKey] || [];
+  openLightbox(photos, idx);
+}
+
+// ── tab switching ──
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='fav') renderFavourites();
+  if(name==='hist') renderHistory();
+  if(name==='nb') renderNotebook();
+}
+
+// ── notebook ──
+function updateNbBadge() {
+  const b = document.getElementById('nb-count-badge');
+  if(b) b.textContent = notebook.length > 0 ? `(${notebook.length})` : '';
+}
+
+function openNbModal(glazeIndex, glazeState) {
+  document.getElementById('nb-modal-title').textContent = glazeIndex !== null ? '存入配方本' : '手动新建配方';
+  document.getElementById('nb-modal-edit-index').value = '';
+  document.getElementById('nb-modal-num').value = glazeIndex !== null ? (glazes[glazeIndex].name.replace(/号.*/, '号') || '') : '';
+  document.getElementById('nb-modal-name').value = glazeIndex !== null ? glazes[glazeIndex].name : '';
+  document.getElementById('nb-modal-note').value = '';
+
+  // base ingredients display (read-only labels)
+  const baseWrap = document.getElementById('nb-modal-base-wrap');
+  baseWrap.innerHTML = baseIngredients.map(i =>
+    `<span style="font-family:'DM Mono',monospace;font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+  ).join('');
+
+  // additives from glaze state
+  nbModalAdditives = [];
+  if(glazeState) {
+    Object.entries(glazeState.additiveTotals).forEach(([name, amt]) => {
+      const pct = +(amt / glazeState.baseDry * 100).toFixed(4);
+      nbModalAdditives.push({name, pct});
+    });
+  }
+  renderNbModalAdditives();
+
+  document.getElementById('nb-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('nb-modal-num').focus(), 50);
+}
+
+function openNbModalEdit(ni) {
+  const rec = notebook[ni];
+  document.getElementById('nb-modal-title').textContent = '编辑配方';
+  document.getElementById('nb-modal-edit-index').value = ni;
+  document.getElementById('nb-modal-num').value = rec.num || '';
+  document.getElementById('nb-modal-name').value = rec.name || '';
+  document.getElementById('nb-modal-note').value = rec.note || '';
+
+  const baseWrap = document.getElementById('nb-modal-base-wrap');
+  baseWrap.innerHTML = (rec.baseIngredients||[]).map(i =>
+    `<span style="font-family:'DM Mono',monospace;font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+  ).join('');
+
+  nbModalAdditives = Object.entries(rec.additives||{}).map(([name,pct])=>({name,pct}));
+  renderNbModalAdditives();
+  document.getElementById('nb-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('nb-modal-name').focus(), 50);
+}
+
+function renderNbModalAdditives() {
+  const w = document.getElementById('nb-modal-add-wrap');
+  w.innerHTML = nbModalAdditives.map((a,i) => `
+    <div class="nb-additive-edit-row">
+      <input type="text" value="${a.name}" placeholder="添加剂名称" oninput="nbModalAdditives[${i}].name=this.value">
+      <input type="number" value="${a.pct}" min="0" step="0.001" placeholder="外加%" oninput="nbModalAdditives[${i}].pct=parseFloat(this.value)||0">
+      <button class="btn-icon" onclick="nbModalAdditives.splice(${i},1);renderNbModalAdditives()" title="删除">×</button>
+    </div>
+  `).join('');
+}
+
+function nbModalAddAdditive() {
+  nbModalAdditives.push({name:'', pct:0});
+  renderNbModalAdditives();
+}
+
+function closeNbModal(e) {
+  if(!e || e.target===document.getElementById('nb-modal')) {
+    document.getElementById('nb-modal').classList.remove('open');
+  }
+}
+
+async function confirmNbSave() {
+  const num = document.getElementById('nb-modal-num').value.trim();
+  const name = document.getElementById('nb-modal-name').value.trim();
+  const note = document.getElementById('nb-modal-note').value.trim();
+  const editIdx = document.getElementById('nb-modal-edit-index').value;
+  if(!name) { document.getElementById('nb-modal-name').focus(); return; }
+
+  const additives = {};
+  nbModalAdditives.forEach(a => { if(a.name.trim()) additives[a.name.trim()] = a.pct; });
+
+  const payload = {
+    num, name, note,
+    base_ingredients: baseIngredients.map(i=>({...i})),
+    base_dry: parseFloat(document.getElementById('base-dry').value)||0,
+    base_water: parseFloat(document.getElementById('base-water').value)||0,
+    glazes: glazes.map(g=>({
+      name: g.name,
+      sourceIndex: g.sourceIndex,
+      sourceAmount: g.sourceAmount,
+      amountUnknown: !!g.amountUnknown,
+      additives: g.additives.map(a=>({...a})),
+    })),
+    additives,
+  };
+
+  if(editIdx !== '') {
+    const existing = notebook[parseInt(editIdx)];
+    const { data, error } = await sb.from('notebook_entries').update(payload).eq('id', existing.id).select().single();
+    if(error) { alert('保存失败：'+error.message); return; }
+    notebook[parseInt(editIdx)] = Object.assign(rowToNotebook(data), {photos: existing.photos});
+  } else {
+    const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
+    if(error) { alert('保存失败：'+error.message); return; }
+    notebook.unshift(rowToNotebook(data));
+  }
+
+  updateNbBadge();
+  document.getElementById('nb-modal').classList.remove('open');
+  renderNotebook();
+  // flash nb save btn if from result
+  document.querySelectorAll('.nb-save-btn').forEach(b=>{
+    if(b.dataset.done) return;
+    b.textContent='已存入 ✓'; b.style.background='rgba(180,210,170,0.25)';
+    b.dataset.done=1;
+  });
+}
+
+function renderNotebook() {
+  const wrap = document.getElementById('nb-list');
+  const countEl = document.getElementById('nb-toolbar-count');
+  if(countEl) countEl.textContent = notebook.length > 0 ? `共 ${notebook.length} 条配方` : '';
+  if(notebook.length===0) {
+    wrap.innerHTML = `<div class="nb-empty"><div class="big">册</div>配方本是空的<br>从计算结果「存入配方本」，或点右上角手动新建</div>`;
+    return;
+  }
+  wrap.innerHTML = notebook.map((rec,ni) => {
+    const baseTags = (rec.baseIngredients||[]).map(i=>
+      `<span class="nb-ingredient-tag">${i.name} ${i.parts}</span>`
+    ).join('');
+    const addTags = Object.entries(rec.additives||{}).map(([name,pct])=>
+      `<span class="nb-additive-tag">${name} +${(+pct).toFixed(3)}%</span>`
+    ).join('');
+
+    return `
+      <div class="nb-card">
+        <div class="nb-card-head">
+          ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
+          <div class="nb-name" id="nbname-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni})" title="点击改名">${rec.name} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>
+          <div id="nbname-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
+            <input type="text" id="nbname-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni});if(event.key==='Escape')cancelNbName(${ni})">
+            <button class="nb-load-btn" onclick="saveNbName(${ni})">保存</button>
+            <button class="nb-del-btn" onclick="cancelNbName(${ni})">✕</button>
+          </div>
+          <div class="nb-date">${rec.savedAt}</div>
+          <div class="nb-actions">
+            <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
+            <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
+            <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
+          </div>
+        </div>
+        <div class="nb-body">
+          <div class="nb-section-label">基础原料</div>
+          <div class="nb-row">${baseTags}</div>
+          ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
+          <div id="nbnote-display-${ni}" onclick="editNbNote(${ni})" style="cursor:pointer">
+            ${rec.note
+              ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>`
+              : `<div class="nb-add-note">＋ 添加备注</div>`}
+          </div>
+          <div id="nbnote-edit-${ni}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--nb-line)">
+            <textarea id="nbnote-input-${ni}" style="width:100%;min-height:52px;font-size:0.78rem;margin-bottom:6px">${rec.note||''}</textarea>
+            <div style="display:flex;gap:6px">
+              <button class="nb-load-btn" style="flex:1" onclick="saveNbNote(${ni})">保存</button>
+              <button class="nb-del-btn" style="white-space:nowrap" onclick="insertBlankLine('nbnote-input-${ni}')">↵ 空行</button>
+              <button class="nb-del-btn" onclick="cancelNbNote(${ni})">取消</button>
+            </div>
+          </div>
+          ${renderPhotoGallery(rec.photos||[], 'notebook_entries', rec.id, 'nb', 'triggerNbPhoto', 'deleteNbPhoto')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function editNbName(ni) {
+  document.getElementById(`nbname-display-${ni}`).style.display='none';
+  const el = document.getElementById(`nbname-edit-${ni}`);
+  el.style.display='flex'; el.style.flex='1';
+  document.getElementById(`nbname-input-${ni}`).focus();
+}
+function cancelNbName(ni) {
+  document.getElementById(`nbname-display-${ni}`).style.display='';
+  document.getElementById(`nbname-edit-${ni}`).style.display='none';
+}
+async function saveNbName(ni) {
+  const v = document.getElementById(`nbname-input-${ni}`).value.trim();
+  if(!v) return;
+  notebook[ni].name = v;
+  await sb.from('notebook_entries').update({name:v}).eq('id', notebook[ni].id);
+  renderNotebook();
+}
+function editNbNote(ni) {
+  document.getElementById(`nbnote-display-${ni}`).style.display='none';
+  document.getElementById(`nbnote-edit-${ni}`).style.display='block';
+  document.getElementById(`nbnote-input-${ni}`).focus();
+}
+function cancelNbNote(ni) {
+  document.getElementById(`nbnote-display-${ni}`).style.display='block';
+  document.getElementById(`nbnote-edit-${ni}`).style.display='none';
+}
+async function saveNbNote(ni) {
+  const v = document.getElementById(`nbnote-input-${ni}`).value.trim();
+  notebook[ni].note = v;
+  await sb.from('notebook_entries').update({note:v}).eq('id', notebook[ni].id);
+  renderNotebook();
+}
+async function deleteNb(ni) {
+  if(!confirm(`删除「${notebook[ni].name}」？`)) return;
+  const rec = notebook[ni];
+  await deleteAllPhotosForRecord('notebook_entries', rec);
+  await sb.from('notebook_entries').delete().eq('id', rec.id);
+  notebook.splice(ni,1);
+  updateNbBadge();
+  renderNotebook();
+}
+function loadNbToCalc(ni) {
+  const rec = notebook[ni];
+  baseIngredients = (rec.baseIngredients||[]).map(i=>({...i}));
+  if(rec.baseDry != null) document.getElementById('base-dry').value = rec.baseDry;
+  if(rec.baseWater != null) document.getElementById('base-water').value = rec.baseWater;
+  if(rec.glazes && rec.glazes.length > 0) {
+    glazes = rec.glazes.map(g=>({
+      name: g.name,
+      sourceIndex: g.sourceIndex,
+      sourceAmount: g.sourceAmount,
+      amountUnknown: !!g.amountUnknown,
+      additives: (g.additives||[]).map(a=>({...a})),
+    }));
+  }
+  renderBase();
+  renderGlazes();
+  switchTab('calc', document.querySelectorAll('.tab-btn')[0]);
+}
+function exportNotebook() {
+  if(notebook.length===0){alert('配方本是空的');return;}
+  const blob=new Blob([JSON.stringify(notebook,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`釉料配方本_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+function importNotebook(input) {
+  const file=input.files[0]; if(!file)return;
+  const r=new FileReader();
+  r.onload=async e=>{
+    try {
+      const imp=JSON.parse(e.target.result);
+      if(!Array.isArray(imp))throw new Error();
+      const existingLegacyIds = new Set(notebook.map(n=>n.legacyId).filter(Boolean));
+      const toImport = imp.filter(rec => !existingLegacyIds.has(rec.id));
+      let added=0, photoCount=0;
+      for (const rec of toImport) {
+        const payload = {
+          legacy_id: rec.id, num: rec.num||'', name: rec.name, note: rec.note||'',
+          base_ingredients: rec.baseIngredients||[], base_dry: rec.baseDry||0, base_water: rec.baseWater||0,
+          glazes: rec.glazes||[], additives: rec.additives||{}, photos: [],
+        };
+        const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
+        if(error) continue;
+        added++;
+        const newRecord = rowToNotebook(data);
+        const photos = rec._photos || [];
+        if(photos.length) {
+          const entries = [];
+          for (let i = 0; i < photos.length; i += 4) {
+            const batch = photos.slice(i, i+4);
+            const uploaded = await Promise.all(batch.map(async p => {
+              const src = typeof p === 'string' ? p : p.src;
+              const caption = typeof p === 'string' ? '' : (p.caption||'');
+              const path = `${currentUserId}/notebook/${data.id}/${crypto.randomUUID()}.jpg`;
+              const { error: upErr } = await sb.storage.from(PHOTO_BUCKET).upload(path, _blobFromDataURL(src), {contentType:'image/jpeg'});
+              return upErr ? null : {path, caption};
+            }));
+            entries.push(...uploaded.filter(Boolean));
+          }
+          photoCount += entries.length;
+          newRecord.photos = entries;
+          await resolvePhotoUrls([newRecord]);
+          await savePhotosField('notebook_entries', data.id, entries);
+        }
+        notebook.unshift(newRecord);
+      }
+      updateNbBadge(); renderNotebook();
+      alert(added>0?`成功导入 ${added} 条，共 ${photoCount} 张图片`:'全部已存在，跳过');
+    } catch { alert('格式不对'); }
+    input.value='';
+  };
+  r.readAsText(file);
+}
+
+
+// ── base ingredients ──
+function renderBase() {
+  const w = document.getElementById('base-ingredients-wrap');
+  w.innerHTML = '';
+  baseIngredients.forEach((ing,i) => {
+    const row = document.createElement('div');
+    row.className = 'base-row';
+    row.innerHTML = `
+      <input type="text" value="${ing.name}" placeholder="原料名称" oninput="baseIngredients[${i}].name=this.value">
+      <input type="number" value="${ing.parts}" min="0" step="0.1" placeholder="份数" oninput="baseIngredients[${i}].parts=parseFloat(this.value)||0">
+      <button class="btn-icon" onclick="removeBase(${i})" title="删除">×</button>
+    `;
+    w.appendChild(row);
+  });
+}
+function addBase() { baseIngredients.push({name:'',parts:0}); renderBase(); }
+function removeBase(i) { baseIngredients.splice(i,1); renderBase(); }
+
+// ── glaze steps ──
+function renderGlazes() {
+  const w = document.getElementById('glazes-wrap');
+  w.innerHTML = '';
+  glazes.forEach((g,gi) => {
+    const sourceOpts = glazes.slice(0,gi).map((prev,pi)=>
+      `<option value="${pi}" ${g.sourceIndex===pi?'selected':''}>${prev.name}</option>`
+    ).join('');
+    const addRows = g.additives.map((a,ai)=>`
+      <div class="additive-row">
+        <input type="text" value="${a.name}" placeholder="添加剂名称" oninput="glazes[${gi}].additives[${ai}].name=this.value">
+        <input type="number" value="${a.amount}" min="0" step="0.001" placeholder="克数" oninput="glazes[${gi}].additives[${ai}].amount=parseFloat(this.value)||0">
+        <button class="btn-icon" onclick="removeAdditive(${gi},${ai})" title="删除">×</button>
+      </div>
+    `).join('');
+    const srcLabel = g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || '上步');
+    const isUnknown = !!g.amountUnknown;
+    const amountField = isUnknown
+      ? `<span class="amount-unknown-badge">？ 待定</span>`
+      : `<input type="number" value="${g.sourceAmount}" min="0" step="0.1" placeholder="取用量" oninput="glazes[${gi}].sourceAmount=parseFloat(this.value)||0">`;
+    const card = document.createElement('div');
+    card.className = 'glaze-card';
+    card.innerHTML = `
+      <div class="glaze-card-head">
+        <span class="glaze-num">${gi+1}</span>
+        <input type="text" value="${g.name}" placeholder="釉料名称" style="flex:1;font-size:0.85rem;" oninput="glazes[${gi}].name=this.value">
+        <button class="btn-icon" onclick="removeGlaze(${gi})" title="删除">×</button>
+      </div>
+      <div class="glaze-card-body">
+        <div class="field-label" style="margin-bottom:4px">取自</div>
+        <div class="source-row">
+          <select onchange="glazes[${gi}].sourceIndex=parseInt(this.value);renderGlazes()">
+            <option value="-1" ${g.sourceIndex===-1?'selected':''}>基础釉</option>
+            ${sourceOpts}
+          </select>
+          <div>
+            ${amountField}
+            <div class="source-unit-hint">湿釉重量（干料＋水）g</div>
+          </div>
+        </div>
+        <label class="unknown-toggle">
+          <input type="checkbox" ${isUnknown?'checked':''} onchange="glazes[${gi}].amountUnknown=this.checked;renderGlazes()">
+          取用量待定（暂不计算）
+        </label>
+        <div class="field-label" style="margin-bottom:6px;margin-top:12px">添加剂</div>
+        ${addRows}
+        <button class="btn-ghost" onclick="addAdditive(${gi})" style="font-size:0.74rem">＋ 添加剂</button>
+      </div>
+    `;
+    w.appendChild(card);
+  });
+}
+function addGlaze() {
+  glazes.push({name:`新釉料${glazes.length+1}`, sourceIndex:glazes.length>0?glazes.length-1:-1, sourceAmount:50, amountUnknown:false, additives:[]});
+  renderGlazes();
+}
+function removeGlaze(i) {
+  glazes.splice(i,1);
+  glazes.forEach(g=>{ if(g.sourceIndex>=i) g.sourceIndex=Math.max(-1,g.sourceIndex-1); });
+  renderGlazes();
+}
+function addAdditive(gi) { glazes[gi].additives.push({name:'',amount:0}); renderGlazes(); }
+function removeAdditive(gi,ai) { glazes[gi].additives.splice(ai,1); renderGlazes(); }
+
+// ── calculate ──
+// Core logic: base ingredient parts stay fixed (22/6/22/40/10).
+// Additives are expressed as % relative to 100g of pure base dry material.
+function calculate() {
+  const baseDry = parseFloat(document.getElementById('base-dry').value)||0;
+  const baseWater = parseFloat(document.getElementById('base-water').value)||0;
+  const baseTotal = baseDry + baseWater;
+  const totalParts = baseIngredients.reduce((s,i)=>s+i.parts,0);
+  const wrap = document.getElementById('results');
+
+  if(baseTotal===0||totalParts===0) {
+    wrap.innerHTML = `<div class="error-msg">请先填写基础釉原料和用量。</div>`;
+    return;
+  }
+
+  // Track each glaze state:
+  // baseDry: grams of pure base dry material in this glaze sample
+  // additiveTotals: {name: total grams of additive in this sample}
+  // totalWet: total wet weight of this glaze sample
+  const glazeStates = [];
+
+  for(let gi=0; gi<glazes.length; gi++) {
+    const g = glazes[gi];
+    // If amount unknown, push a sentinel so indices stay aligned
+    if(g.amountUnknown) {
+      glazeStates.push({ unknown: true, totalWet: null, baseDry: null, additiveTotals: {} });
+      continue;
+    }
+    const srcRaw = g.sourceIndex===-1
+      ? { totalWet: baseTotal, baseDry: baseDry, additiveTotals: {} }
+      : glazeStates[g.sourceIndex];
+    // source is unknown or missing — propagate unknown
+    if(!srcRaw || srcRaw.unknown) {
+      glazeStates.push({ unknown: true, totalWet: null, baseDry: null, additiveTotals: {} });
+      continue;
+    }
+    const src = srcRaw;
+
+    const frac = g.sourceAmount / src.totalWet;
+    const takenBaseDry = src.baseDry * frac;
+
+    // scale additives from source
+    const newAdditives = {};
+    for(const [k,v] of Object.entries(src.additiveTotals)) newAdditives[k] = v*frac;
+
+    // add this step's additives
+    g.additives.forEach(a => {
+      if(!a.name.trim()) return;
+      newAdditives[a.name] = (newAdditives[a.name]||0) + a.amount;
+    });
+
+    const totalAddedDry = g.additives.reduce((s,a)=>s+a.amount,0);
+    glazeStates.push({
+      unknown: false,
+      totalWet: g.sourceAmount + totalAddedDry,
+      baseDry: takenBaseDry,
+      additiveTotals: newAdditives,
+    });
+  }
+
+  lastGlazeStates = glazeStates;
+  let html = '';
+
+  glazeStates.forEach((s, i) => {
+    const g = glazes[i];
+    const srcName = g.sourceIndex===-1 ? '基础釉' : glazes[g.sourceIndex].name;
+
+    if(s.unknown) {
+      // render a placeholder card for unknown-amount steps
+      const additivesStr = g.additives.filter(a=>a.name.trim()).map(a=>`${a.name} ${a.amount}g`).join('、') || '无';
+      html += `
+        <div class="result-block">
+          <div class="result-head">
+            <div class="result-head-left">
+              <strong>${g.name}</strong>
+              <span>取自 ${srcName} · 取用量待定</span>
+            </div>
+            <button class="nb-save-btn save-btn" style="margin-right:4px" onclick="openNbModal(${i}, null)">存入配方本</button>
+          </div>
+          <div style="padding:14px 16px;font-size:0.82rem;color:var(--ink3);font-family:'DM Mono',monospace">
+            <span style="background:var(--bg2);border:1px dashed var(--line);padding:3px 10px;border-radius:4px;margin-right:8px">？ 取用量未填写</span>
+            添加剂：${additivesStr}
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // Base rows: fixed parts, grams proportional to baseDry in this sample
+    const baseRows = baseIngredients.map(ing => {
+      return `<tr>
+        <td>${ing.name}</td>
+        <td>${ing.parts}</td>
+        <td>—</td>
+      </tr>`;
+    }).join('');
+
+    // Additive rows: % = additive_grams / baseDry * 100
+    const addRows = Object.entries(s.additiveTotals).map(([name,amt]) => {
+      const pct = (amt / s.baseDry * 100).toFixed(3);
+      return `<tr>
+        <td>${name}<span class="tag-add">外加</span></td>
+        <td>—</td>
+        <td class="pct-highlight">${pct}%</td>
+      </tr>`;
+    }).join('');
+
+    // source amount label — clarify what the number means
+    const srcAmtLabel = `取自 ${srcName} 中的 ${g.sourceAmount}g<span style="font-size:0.62rem;opacity:0.7">（湿釉，含干料+水）</span>`;
+
+    html += `
+      <div class="result-block">
+        <div class="result-head">
+          <div class="result-head-left">
+            <strong>${g.name}</strong>
+            <span>${srcAmtLabel}</span>
+          </div>
+          <button class="nb-save-btn save-btn" style="margin-right:4px" onclick="openNbModal(${i}, lastGlazeStates[${i}])">存入配方本</button><button class="save-btn" onclick="openSaveModal(${i})">收藏</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>原料</th>
+              <th>份数（固定）</th>
+              <th>添加剂外加%</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${baseRows}
+            ${addRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  });
+
+  wrap.innerHTML = html || `<div class="error-msg">没有可计算的步骤，请先添加釉料。</div>`;
+
+  // auto-save to history
+  const historyPayload = {
+    base_ingredients: baseIngredients.map(i=>({...i})),
+    base_dry: baseDry,
+    base_water: baseWater,
+    glazes: glazes.map(g=>({
+      name: g.name,
+      sourceIndex: g.sourceIndex,
+      sourceAmount: g.sourceAmount,
+      amountUnknown: !!g.amountUnknown,
+      additives: g.additives.map(a=>({...a})),
+    })),
+    glaze_states: glazeStates.map(s=>({
+      baseDry: s.baseDry,
+      additiveTotals: {...s.additiveTotals},
+    })),
+  };
+  sb.from('history_entries').insert(historyPayload).select().single().then(({data, error}) => {
+    if(error || !data) return;
+    history.unshift(rowToHistory(data));
+    if(history.length > 50) history.length = 50; // server also trims to 50 per user
+    updateHistBadge();
+  });
+}
+
+function updateHistBadge() {
+  const b = document.getElementById('hist-count-badge');
+  if(b) b.textContent = history.length > 0 ? `(${history.length})` : '';
+}
+
+async function clearHistory() {
+  if(!confirm(`清空全部 ${history.length} 条历史记录？`)) return;
+  await sb.from('history_entries').delete().eq('user_id', currentUserId);
+  history = [];
+  updateHistBadge();
+  renderHistory();
+}
+
+// ── update history → notebook ──
+let updModalHistIndex = null;
+
+function openUpdModal(ri) {
+  if(notebook.length === 0) {
+    alert('配方本是空的，请先在配方本里新建一条配方，再来更新。');
+    return;
+  }
+  updModalHistIndex = ri;
+  const histRec = history[ri];
+
+  // Build notebook options string (shared across all selects)
+  const nbOpts = '<option value="">— 不更新 —</option>' +
+    notebook.map((rec, ni) =>
+      `<option value="${ni}">${rec.num ? rec.num+' · ' : ''}${rec.name}</option>`
+    ).join('');
+
+  const pairs = document.getElementById('upd-modal-pairs');
+  pairs.innerHTML = histRec.glazes.map((g, gi) => `
+    <div class="updmodal-pair" id="upd-pair-${gi}">
+      <input type="checkbox" id="upd-chk-${gi}"
+        onchange="updTogglePair(${gi})"
+        style="margin:0">
+      <label for="upd-chk-${gi}" class="updmodal-glaze-name" style="cursor:pointer">${g.name || '未命名'}</label>
+      <span class="updmodal-arrow">→</span>
+      <select class="updmodal-nb-select" id="upd-sel-${gi}" disabled
+        onchange="updCheckConfirm()">
+        ${nbOpts}
+      </select>
+    </div>
+  `).join('');
+
+  updCheckConfirm();
+  document.getElementById('upd-modal').classList.add('open');
+}
+
+function updTogglePair(gi) {
+  const chk = document.getElementById(`upd-chk-${gi}`);
+  const sel = document.getElementById(`upd-sel-${gi}`);
+  const pair = document.getElementById(`upd-pair-${gi}`);
+  sel.disabled = !chk.checked;
+  pair.classList.toggle('active', chk.checked);
+  updCheckConfirm();
+}
+
+function updCheckConfirm() {
+  // Enable confirm if at least one row is checked AND has a notebook target selected
+  const histRec = history[updModalHistIndex];
+  if(!histRec) return;
+  const anyReady = histRec.glazes.some((_, gi) => {
+    const chk = document.getElementById(`upd-chk-${gi}`);
+    const sel = document.getElementById(`upd-sel-${gi}`);
+    return chk?.checked && sel?.value !== '';
+  });
+  const btn = document.getElementById('upd-confirm-btn');
+  btn.disabled = !anyReady;
+  btn.style.opacity = anyReady ? '1' : '0.4';
+}
+
+function closeUpdModal(e) {
+  if(e && e.target !== document.getElementById('upd-modal')) return;
+  document.getElementById('upd-modal').classList.remove('open');
+}
+
+async function confirmUpdateToNb() {
+  const histRec = history[updModalHistIndex];
+  if(!histRec) return;
+
+  let updCount = 0;
+  for (const [gi, glaze] of histRec.glazes.entries()) {
+    const chk = document.getElementById(`upd-chk-${gi}`);
+    const sel = document.getElementById(`upd-sel-${gi}`);
+    if(!chk?.checked || sel?.value === '') continue;
+
+    const ni = parseInt(sel.value);
+    const nbRec = notebook[ni];
+    const glazeState = histRec.glazeStates?.[gi];
+
+    const additives = {};
+    if(glazeState && !glazeState.unknown && glazeState.baseDry) {
+      Object.entries(glazeState.additiveTotals || {}).forEach(([name, amt]) => {
+        additives[name] = +(amt / glazeState.baseDry * 100).toFixed(4);
+      });
+    }
+
+    const payload = {
+      base_ingredients: histRec.baseIngredients.map(i => ({...i})),
+      base_dry: histRec.baseDry,
+      base_water: histRec.baseWater,
+      glazes: [{
+        name: glaze.name,
+        sourceIndex: -1,
+        sourceAmount: glaze.sourceAmount,
+        amountUnknown: !!glaze.amountUnknown,
+        additives: (glaze.additives || []).map(a => ({...a})),
+      }],
+      additives,
+    };
+
+    const { data, error } = await sb.from('notebook_entries').update(payload).eq('id', nbRec.id).select().single();
+    if(error) continue;
+    notebook[ni] = Object.assign(rowToNotebook(data), {photos: nbRec.photos});
+    updCount++;
+  }
+
+  document.getElementById('upd-modal').classList.remove('open');
+  renderNotebook();
+  const nbBtn = document.querySelectorAll('.tab-btn')[2];
+  switchTab('nb', nbBtn);
+  if(updCount > 1) setTimeout(() => alert(`已更新 ${updCount} 条配方。`), 200);
+}
+
+function renderHistory() {
+  const wrap = document.getElementById('hist-list');
+  const countEl = document.getElementById('hist-toolbar-count');
+  if(countEl) countEl.textContent = history.length > 0 ? `共 ${history.length} 条（最多保留50条）` : '';
+  if(history.length === 0) {
+    wrap.innerHTML = `<div class="fav-empty"><div class="big">◷</div>还没有历史记录<br>每次点击「计算配比」自动保存</div>`;
+    return;
+  }
+  wrap.innerHTML = history.map((rec, ri) => {
+    const baseTags = rec.baseIngredients.map(i=>`<span class="fav-tag">${i.name} ${i.parts}</span>`).join('');
+    const glazeRows = rec.glazes.map((g, gi) => {
+      const s = rec.glazeStates[gi];
+      if(!s) return '';
+      const addTags = Object.entries(s.additiveTotals).map(([name,amt])=>{
+        const pct = (amt/s.baseDry*100).toFixed(3);
+        return `<span class="fav-tag" style="background:var(--fav-bg);color:var(--fav);border-color:var(--fav-line)">${name} +${pct}%</span>`;
+      }).join('');
+      return `<div style="margin-bottom:6px">
+        <span style="font-size:0.78rem;font-weight:500;margin-right:8px">${g.name}</span>
+        ${addTags || '<span class="fav-tag">无添加剂</span>'}
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="fav-card">
+        <div class="fav-card-head">
+          <div class="fav-name" style="flex:1;font-size:0.82rem;color:var(--ink2)">${rec.savedAt}</div>
+          <div class="fav-actions">
+            <button class="fav-load-btn" onclick="loadHistory(${ri})">载入到计算器</button>
+            <button class="nb-load-btn" onclick="openUpdModal(${ri})" style="background:var(--nb-bg);color:var(--nb);border-color:var(--nb-line)">更新到配方本…</button>
+            <button class="fav-del-btn" onclick="deleteHistory(${ri})">删除</button>
+          </div>
+        </div>
+        <div class="fav-body">
+          <div style="margin-bottom:8px">${baseTags}
+            <span class="fav-tag" style="color:var(--ink3)">干料${rec.baseDry}g · 水${rec.baseWater}g</span>
+          </div>
+          ${glazeRows}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function deleteHistory(ri) {
+  const rec = history[ri];
+  await sb.from('history_entries').delete().eq('id', rec.id);
+  history.splice(ri, 1);
+  updateHistBadge();
+  renderHistory();
+}
+
+function loadHistory(ri) {
+  const rec = history[ri];
+  baseIngredients = rec.baseIngredients.map(i=>({...i}));
+  document.getElementById('base-dry').value = rec.baseDry;
+  document.getElementById('base-water').value = rec.baseWater;
+  glazes = rec.glazes.map(g=>({
+    name: g.name,
+    sourceIndex: g.sourceIndex,
+    sourceAmount: g.sourceAmount,
+    amountUnknown: !!g.amountUnknown,
+    additives: g.additives.map(a=>({...a})),
+  }));
+  renderBase();
+  renderGlazes();
+  switchTab('calc', document.querySelectorAll('.tab-btn')[0]);
+}
+
+// ── blank line helper ──
+function insertBlankLine(textareaId) {
+  const ta = document.getElementById(textareaId);
+  if(!ta) return;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const val = ta.value;
+  const insert = '\n\n';
+  ta.value = val.slice(0, start) + insert + val.slice(end);
+  const pos = start + insert.length;
+  ta.selectionStart = ta.selectionEnd = pos;
+  ta.focus();
+}
+
+// ── save base glaze to notebook ──
+function openBaseNbModal() {
+  document.getElementById('nb-modal-title').textContent = '存入配方本（基础釉）';
+  document.getElementById('nb-modal-edit-index').value = '';
+  document.getElementById('nb-modal-num').value = '';
+  document.getElementById('nb-modal-name').value = '';
+  document.getElementById('nb-modal-note').value = '';
+
+  const baseWrap = document.getElementById('nb-modal-base-wrap');
+  baseWrap.innerHTML = baseIngredients.map(i =>
+    `<span style="font-family:'DM Mono',monospace;font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+  ).join('');
+
+  nbModalAdditives = [];
+  renderNbModalAdditives();
+
+  document.getElementById('nb-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('nb-modal-num').focus(), 50);
+}
+
+// ── save modal ──
+function openBaseModal() {
+  document.getElementById('modal-title').textContent = '收藏基础釉';
+  document.getElementById('modal-type').value = 'base';
+  document.getElementById('modal-name').value = '';
+  document.getElementById('modal-name').placeholder = '如：201号大结晶釉';
+  document.getElementById('modal-note').value = '';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(()=>document.getElementById('modal-name').focus(), 50);
+}
+
+function openSaveModal(glazeIndex) {
+  document.getElementById('modal-title').textContent = '收藏配方';
+  document.getElementById('modal-type').value = 'additive';
+  document.getElementById('modal-name').placeholder = '如：蓝色大结晶釉 205号';
+  pendingSaveIndex = glazeIndex;
+  document.getElementById('modal-name').value = glazes[glazeIndex].name;
+  document.getElementById('modal-note').value = '';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(()=>document.getElementById('modal-name').focus(), 50);
+}
+
+function closeModal(e) {
+  if(!e || e.target===document.getElementById('modal')) {
+    document.getElementById('modal').classList.remove('open');
+  }
+}
+
+async function confirmSave() {
+  const type = document.getElementById('modal-type').value;
+  const note = document.getElementById('modal-note').value.trim();
+
+  let payload;
+  if(type === 'base') {
+    const name = document.getElementById('modal-name').value.trim() || '基础釉';
+    const baseDry = parseFloat(document.getElementById('base-dry').value)||0;
+    const baseWater = parseFloat(document.getElementById('base-water').value)||0;
+    payload = {
+      type: 'base', name, note,
+      base_ingredients: baseIngredients.map(i=>({...i})),
+      base_dry: baseDry,
+      base_water: baseWater,
+      additives: {},
+    };
+  } else {
+    const name = document.getElementById('modal-name').value.trim() || glazes[pendingSaveIndex].name;
+    const s = lastGlazeStates[pendingSaveIndex];
+    const g = glazes[pendingSaveIndex];
+    payload = {
+      type: 'additive', name, note,
+      glaze_name: g.name,
+      base_ingredients: baseIngredients.map(i=>({...i})),
+      additives: {...s.additiveTotals},
+      base_dry: s.baseDry,
+    };
+  }
+
+  const { data, error } = await sb.from('favourites').insert(payload).select().single();
+  if(error) { alert('收藏失败：'+error.message); return; }
+  favourites.unshift(rowToFavourite(data));
+
+  if(type !== 'base') {
+    const btns = document.querySelectorAll('.save-btn');
+    if(btns[pendingSaveIndex]) {
+      btns[pendingSaveIndex].textContent = '已收藏 ✓';
+      btns[pendingSaveIndex].classList.add('saved');
+    }
+  }
+
+  updateFavBadge();
+  document.getElementById('modal').classList.remove('open');
+}
+
+function updateFavBadge() {
+  const b = document.getElementById('fav-count-badge');
+  b.textContent = favourites.length > 0 ? `(${favourites.length})` : '';
+}
+
+// ── export / import ──
+function exportFavourites() {
+  if(favourites.length===0) { alert('收藏夹是空的，没有可导出的配方。'); return; }
+  const data = JSON.stringify(favourites, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `釉料配方收藏_${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importFavourites(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if(!Array.isArray(imported)) throw new Error('格式不对');
+      const existingLegacyIds = new Set(favourites.map(f=>f.legacyId).filter(Boolean));
+      const toImport = imported.filter(fav => !existingLegacyIds.has(fav.id));
+      let added = 0, photoCount = 0;
+      for (const fav of toImport) {
+        const isBase = fav.type === 'base' || (!fav.type && Object.keys(fav.additives||{}).length === 0);
+        const payload = {
+          legacy_id: fav.id, type: isBase ? 'base' : 'additive', name: fav.name, note: fav.note||'',
+          glaze_name: fav.glazeName || null,
+          base_ingredients: fav.baseIngredients||[], base_dry: fav.baseDry||0, base_water: fav.baseWater||0,
+          additives: fav.additives||{}, photos: [],
+        };
+        const { data, error } = await sb.from('favourites').insert(payload).select().single();
+        if(error) continue;
+        added++;
+        const newFav = rowToFavourite(data);
+        const photos = fav._photos || [];
+        if(photos.length) {
+          const entries = [];
+          for (let i = 0; i < photos.length; i += 4) {
+            const batch = photos.slice(i, i+4);
+            const uploaded = await Promise.all(batch.map(async p => {
+              const src = typeof p === 'string' ? p : p.src;
+              const caption = typeof p === 'string' ? '' : (p.caption||'');
+              const path = `${currentUserId}/favourites/${data.id}/${crypto.randomUUID()}.jpg`;
+              const { error: upErr } = await sb.storage.from(PHOTO_BUCKET).upload(path, _blobFromDataURL(src), {contentType:'image/jpeg'});
+              return upErr ? null : {path, caption};
+            }));
+            entries.push(...uploaded.filter(Boolean));
+          }
+          photoCount += entries.length;
+          newFav.photos = entries;
+          await resolvePhotoUrls([newFav]);
+          await savePhotosField('favourites', data.id, entries);
+        }
+        favourites.unshift(newFav);
+      }
+      updateFavBadge();
+      renderFavourites();
+      alert(added > 0 ? `成功导入 ${added} 条配方，共 ${photoCount} 张图片。` : '所有配方已存在，没有新增。');
+    } catch(err) {
+      alert('导入失败：文件格式不正确，请选择由本工具导出的 JSON 文件。');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ── favourites panel ──
+function renderFavourites() {
+  const wrap = document.getElementById('fav-list');
+  const countEl = document.getElementById('fav-toolbar-count');
+  if(countEl) countEl.textContent = favourites.length > 0 ? `共 ${favourites.length} 条配方` : '';
+  if(favourites.length===0) {
+    wrap.innerHTML = `<div class="fav-empty"><div class="big">☆</div>还没有收藏的配方<br>计算出结果后，点击「收藏此配方」保存</div>`;
+    return;
+  }
+
+  wrap.innerHTML = favourites.map((fav,fi)=>{
+    const isBase = fav.type === 'base' || (!fav.type && Object.keys(fav.additives||{}).length === 0);
+    const typeLabel = isBase
+      ? `<span style="font-size:0.65rem;font-family:'DM Mono',monospace;padding:1px 7px;border-radius:3px;background:var(--bg2);color:var(--ink3);border:1px solid var(--line);margin-right:6px">基础釉</span>`
+      : `<span style="font-size:0.65rem;font-family:'DM Mono',monospace;padding:1px 7px;border-radius:3px;background:var(--fav-bg);color:var(--fav);border:1px solid var(--fav-line);margin-right:6px">添加剂</span>`;
+
+    const baseTags = fav.baseIngredients.map(i=>
+      `<span class="fav-tag">${i.name} ${i.parts}</span>`
+    ).join('');
+
+    let extraInfo = '';
+    if(isBase) {
+      const total = (fav.baseDry||0) + (fav.baseWater||0);
+      extraInfo = total > 0
+        ? `<div class="fav-summary" style="margin-top:6px">干料 ${fav.baseDry}g · 水 ${fav.baseWater}g · 共 ${total}g</div>`
+        : '';
+    } else {
+      const addEntries = Object.entries(fav.additives||{});
+      const addTags = addEntries.map(([name,amt])=>{
+        const pct = (amt/fav.baseDry*100).toFixed(3);
+        return `<span class="fav-tag" style="background:var(--fav-bg);color:var(--fav);border-color:var(--fav-line)">${name} +${pct}%</span>`;
+      }).join('');
+      extraInfo = addTags
+        ? `<div style="margin-top:6px">${addTags}</div>`
+        : `<div class="fav-summary" style="margin-top:6px">无添加剂</div>`;
+    }
+
+    return `
+      <div class="fav-card">
+        <div class="fav-card-head">
+          <div class="fav-name" style="flex:1;display:flex;align-items:center;gap:6px">
+            ${typeLabel}
+            <span id="name-display-${fi}" style="cursor:pointer" onclick="editName(${fi})" title="点击改名">${fav.name} <span style="font-size:0.65rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></span>
+            <span id="name-edit-${fi}" style="display:none;flex:1;display:none;align-items:center;gap:6px">
+              <input type="text" id="name-input-${fi}" value="${fav.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveName(${fi});if(event.key==='Escape')cancelName(${fi})">
+              <button class="fav-load-btn" onclick="saveName(${fi})">保存</button>
+              <button class="fav-del-btn" onclick="cancelName(${fi})">✕</button>
+            </span>
+          </div>
+          <div class="fav-date">${fav.savedAt}</div>
+          <div class="fav-actions">
+            <button class="fav-load-btn" onclick="loadFavourite(${fi})">载入</button>
+            <button class="fav-load-btn" style="background:var(--nb-bg);color:var(--nb);border-color:var(--nb-line)" onclick="importFavToNotebook(${fi})">存入配方本</button>
+            <button class="fav-del-btn" onclick="deleteFavourite(${fi})">删除</button>
+          </div>
+        </div>
+        <div class="fav-body">
+          <div class="fav-note-wrap" id="note-display-${fi}">
+            ${fav.note
+              ? `<div class="fav-note" style="cursor:pointer;white-space:pre-wrap" onclick="editNote(${fi})" title="点击编辑备注">${fav.note} <span style="font-size:0.65rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>`
+              : `<div style="font-size:0.75rem;color:var(--ink3);cursor:pointer;margin-bottom:8px;font-family:'DM Mono',monospace" onclick="editNote(${fi})">＋ 添加备注</div>`
+            }
+          </div>
+          <div class="fav-note-edit" id="note-edit-${fi}" style="display:none;margin-bottom:8px">
+            <textarea id="note-input-${fi}" style="width:100%;min-height:52px;font-size:0.78rem;margin-bottom:6px">${fav.note||''}</textarea>
+            <div style="display:flex;gap:6px">
+              <button class="fav-load-btn" style="flex:1" onclick="saveNote(${fi})">保存</button>
+              <button class="fav-del-btn" style="white-space:nowrap" onclick="insertBlankLine('note-input-${fi}')">↵ 空行</button>
+              <button class="fav-del-btn" onclick="cancelNote(${fi})">取消</button>
+            </div>
+          </div>
+          <div>${baseTags}</div>
+          ${extraInfo}
+          ${renderPhotoGallery(fav.photos||[], 'favourites', fav.id, 'fav', 'triggerFavPhoto', 'deleteFavPhoto')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function importFavToNotebook(fi) {
+  const fav = favourites[fi];
+  const isBase = fav.type === 'base' || (!fav.type && Object.keys(fav.additives||{}).length === 0);
+
+  // Build notebook additives (pct) from fav additives (absolute amounts)
+  const nbAdditives = {};
+  if(!isBase && fav.baseDry > 0) {
+    Object.entries(fav.additives||{}).forEach(([name, amt]) => {
+      nbAdditives[name] = +(amt / fav.baseDry * 100).toFixed(4);
+    });
+  }
+
+  // Build glazes array
+  const glazesForNb = isBase ? [] : [{
+    name: fav.glazeName || fav.name,
+    sourceIndex: -1,
+    sourceAmount: fav.baseDry || 0,
+    amountUnknown: false,
+    additives: Object.entries(fav.additives||{}).map(([name, amount]) => ({ name, amount })),
+  }];
+
+  const payload = {
+    num: '',
+    name: fav.name,
+    note: fav.note || '',
+    base_ingredients: (fav.baseIngredients||[]).map(i=>({...i})),
+    base_dry: fav.baseDry || 0,
+    base_water: fav.baseWater || 0,
+    glazes: glazesForNb,
+    additives: nbAdditives,
+  };
+
+  const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
+  if(error) { alert('存入配方本失败：'+error.message); return; }
+  notebook.unshift(rowToNotebook(data));
+  updateNbBadge();
+  // Switch to notebook tab
+  const nbBtn = document.querySelectorAll('.tab-btn')[2];
+  switchTab('nb', nbBtn);
+  renderNotebook();
+}
+
+function editNote(fi) {
+  document.getElementById(`note-display-${fi}`).style.display = 'none';
+  document.getElementById(`note-edit-${fi}`).style.display = 'block';
+  document.getElementById(`note-input-${fi}`).focus();
+}
+
+function cancelNote(fi) {
+  document.getElementById(`note-display-${fi}`).style.display = 'block';
+  document.getElementById(`note-edit-${fi}`).style.display = 'none';
+}
+
+async function saveNote(fi) {
+  const newNote = document.getElementById(`note-input-${fi}`).value.trim();
+  favourites[fi].note = newNote;
+  await sb.from('favourites').update({note:newNote}).eq('id', favourites[fi].id);
+  renderFavourites();
+}
+
+function editName(fi) {
+  document.getElementById(`name-display-${fi}`).style.display = 'none';
+  const editEl = document.getElementById(`name-edit-${fi}`);
+  editEl.style.display = 'flex';
+  document.getElementById(`name-input-${fi}`).focus();
+}
+
+function cancelName(fi) {
+  document.getElementById(`name-display-${fi}`).style.display = 'inline';
+  document.getElementById(`name-edit-${fi}`).style.display = 'none';
+}
+
+async function saveName(fi) {
+  const newName = document.getElementById(`name-input-${fi}`).value.trim();
+  if(!newName) return;
+  favourites[fi].name = newName;
+  await sb.from('favourites').update({name:newName}).eq('id', favourites[fi].id);
+  renderFavourites();
+}
+
+async function deleteFavourite(fi) {
+  if(!confirm(`删除「${favourites[fi].name}」？`)) return;
+  const fav = favourites[fi];
+  await deleteAllPhotosForRecord('favourites', fav);
+  await sb.from('favourites').delete().eq('id', fav.id);
+  favourites.splice(fi,1);
+  updateFavBadge();
+  renderFavourites();
+}
+
+function loadFavourite(fi) {
+  const fav = favourites[fi];
+  baseIngredients = fav.baseIngredients.map(i=>({...i}));
+  renderBase();
+  if(fav.type === 'base') {
+    if(fav.baseDry) document.getElementById('base-dry').value = fav.baseDry;
+    if(fav.baseWater) document.getElementById('base-water').value = fav.baseWater;
+    switchTab('calc', document.querySelectorAll('.tab-btn')[0]);
+  } else {
+    switchTab('calc', document.querySelectorAll('.tab-btn')[0]);
+    alert(`基础原料已载入。\n添加剂比例请参考收藏夹卡片手动添加步骤。`);
+  }
+}
+
+</script>
+</body>
+</html>
