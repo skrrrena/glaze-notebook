@@ -417,7 +417,12 @@
   .glaze-tree-root { background: var(--nb-bg); color: var(--nb); border-color: var(--nb-line); cursor: default; }
   .glaze-tree-root:hover { background: var(--nb-bg); color: var(--nb); }
   .glaze-tree-amount { color: var(--ink3); font-size: 0.64rem; }
-  .glaze-tree-issue, .glaze-tree-issue:hover { border-color: var(--danger); color: var(--danger); }
+  .glaze-tree-issue, .glaze-tree-issue:hover {
+    border-color: var(--danger); color: var(--danger); cursor: default; background: var(--bg2);
+  }
+  .glaze-tree-missing, .glaze-tree-missing:hover {
+    border-color: var(--accent2); color: var(--accent2); cursor: default; background: var(--bg2); opacity: 0.8;
+  }
   @keyframes nbCardFlash {
     0%, 100% { box-shadow: 0 0 0 2px transparent inset; }
     30%, 70% { box-shadow: 0 0 0 2px var(--nb) inset; }
@@ -1367,6 +1372,11 @@ async function confirmNbSave() {
 // the sourceIndex/sourceName chain in rec.glazes (how this record was actually derived,
 // step by step) was computed but never surfaced. That's how 306 wearing 311's entire
 // derivation tree went unnoticed. Render it explicitly so a wrong chain is visible at a glance.
+//
+// Node labels are name-based lookups (findNbIndexByLabel), not real foreign keys — num/name
+// are historical archive anchors that get renamed independently of this app (e.g. 103->03),
+// so a node can legitimately point at nothing. That's a "not found" case (amber, non-clickable),
+// distinct from an actual structural defect from findGlazeSourceIssues (red, non-clickable).
 function renderGlazeTree(rec) {
   const arr = rec.glazes || [];
   if (!arr.length) return '';
@@ -1384,17 +1394,36 @@ function renderGlazeTree(rec) {
     const g = arr[gi];
     const issue = issues[gi];
     const kids = childrenOf.get(gi) || [];
-    const amountLabel = issue ? '⚠' : (g.amountUnknown ? '？' : `${g.sourceAmount || 0}g`);
+    const kidsHtml = kids.length ? `<ul>${kids.map(renderNode).join('')}</ul>` : '';
+    if (issue) {
+      return `<li>
+        <div class="glaze-tree-node glaze-tree-issue" title="⚠ ${escAttr(issue)}">
+          ${g.name || '(未命名)'} <span class="glaze-tree-amount">⚠ ${issue}</span>
+        </div>
+        ${kidsHtml}
+      </li>`;
+    }
+    const parentLabel = g.sourceIndex === -1 ? '基础釉' : (arr[g.sourceIndex]?.name || '上步');
+    const amountLabel = g.amountUnknown ? '？' : `${g.sourceAmount || 0}g`;
+    const additivesLabel = (g.additives || []).length
+      ? ' + ' + g.additives.map(a => `${a.name}${a.amount}g`).join(' + ')
+      : '';
+    const targetIdx = findNbIndexByLabel(g.name);
+    const missing = targetIdx === -1;
+    const cls = missing ? 'glaze-tree-missing' : '';
+    const clickAttr = missing ? '' : ` onclick="jumpToNbByLabel('${escAttr(g.name)}')"`;
+    const tip = missing ? `配方本中未找到「${g.name}」对应的记录` : '点击跳转到对应记录';
     return `<li>
-      <div class="glaze-tree-node ${issue ? 'glaze-tree-issue' : ''}" onclick="jumpToNbByLabel('${escAttr(g.name)}')" title="${issue ? ('⚠ ' + issue) : '点击跳转到对应记录'}">
-        ${g.name || '(未命名)'} <span class="glaze-tree-amount">${amountLabel}</span>
+      <div class="glaze-tree-node ${cls}"${clickAttr} title="${escAttr(tip)}">
+        ${g.name || '(未命名)'} ← 取自 ${parentLabel} <span class="glaze-tree-amount">· ${amountLabel}${additivesLabel}</span>
       </div>
-      ${kids.length ? `<ul>${kids.map(renderNode).join('')}</ul>` : ''}
+      ${kidsHtml}
     </li>`;
   }
   const roots = childrenOf.get(-1) || [];
+  const rootLabel = rec.num ? `${rec.num}号基釉 · ${rec.name}` : `基础釉 · ${rec.name}`;
   const rootHtml = roots.length
-    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="本记录自身基础釉">基础釉</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
+    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="本记录自身基础釉">${escAttr(rootLabel)}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
     : '';
   const orphanHtml = orphanIdx.length ? `<ul>${orphanIdx.map(renderNode).join('')}</ul>` : '';
   if (!rootHtml && !orphanHtml) return '';
@@ -1402,11 +1431,17 @@ function renderGlazeTree(rec) {
 }
 
 // A tree node's name (e.g. "312") is just a label snapshot, not a real FK to another
-// record — so jumping is best-effort: match by num first, then exact name, then substring.
-function jumpToNbByLabel(label) {
+// record — so matching is best-effort: num first, then exact name, then substring.
+// Shared by renderGlazeTree (existence check, to decide clickable vs. grayed-out) and
+// jumpToNbByLabel (the actual jump), so both agree on what "found" means.
+function findNbIndexByLabel(label) {
   let idx = notebook.findIndex(r => r.num && r.num === label);
   if (idx === -1) idx = notebook.findIndex(r => r.name === label);
   if (idx === -1) idx = notebook.findIndex(r => r.name && r.name.includes(label));
+  return idx;
+}
+function jumpToNbByLabel(label) {
+  const idx = findNbIndexByLabel(label);
   if (idx === -1) { alert(`配方本里没找到「${label}」对应的记录`); return; }
   const el = document.getElementById(`nb-card-${idx}`);
   if (!el) return;
