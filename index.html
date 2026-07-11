@@ -1384,6 +1384,27 @@ async function confirmNbSave() {
 // are historical archive anchors that get renamed independently of this app (e.g. 103->03),
 // so a node can legitimately point at nothing. That's a "not found" case (amber, non-clickable),
 // distinct from an actual structural defect from findGlazeSourceIssues (red, non-clickable).
+// "X号基釉" as a root label implies this record IS a base-glaze original — true for
+// pure base records (01/10/100/201/213/301/306...) but false for leaf experiment
+// records that merely copied someone else's base (03/05/11/12...): 03 is not itself
+// a base, it's an experiment made *with* 01's base. Since nothing in the data says
+// "my base came from record X" (that's the deferred Part B / baseSourceId work),
+// the only claim we can make truthfully here is what the base *is made of* — so
+// show the composition instead of asserting whose base it is.
+function formatIngredients(arr) {
+  return (arr || []).map(i => `${i.name}${i.parts}`).join(' ');
+}
+function ingredientsSignature(arr) {
+  return (arr || []).map(i => `${(i.name||'').trim()}:${i.parts}`).sort().join('|');
+}
+// Best-effort only: flags a coincidental ingredient-list match with some other
+// record that itself has no glazes (i.e. reads as a base-glaze original), purely
+// as a display hint — does not touch or imply any actual data reference.
+function findMatchingPureBaseRecord(rec) {
+  const sig = ingredientsSignature(rec.baseIngredients);
+  if (!sig) return null;
+  return notebook.find(r => r !== rec && !(r.glazes||[]).length && ingredientsSignature(r.baseIngredients) === sig) || null;
+}
 function renderGlazeTree(rec) {
   const arr = rec.glazes || [];
   if (!arr.length) return '';
@@ -1397,6 +1418,7 @@ function renderGlazeTree(rec) {
     childrenOf.get(p).push(gi);
   });
   const escAttr = s => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  const baseLabel = `基础釉：${formatIngredients(rec.baseIngredients)}`;
   function renderNode(gi) {
     const g = arr[gi];
     const issue = issues[gi];
@@ -1410,7 +1432,7 @@ function renderGlazeTree(rec) {
         ${kidsHtml}
       </li>`;
     }
-    const parentLabel = g.sourceId === null ? '基础釉' : (arr.find(x=>x.stepId===g.sourceId)?.name || '上步');
+    const parentLabel = g.sourceId === null ? baseLabel : (arr.find(x=>x.stepId===g.sourceId)?.name || '上步');
     const amountLabel = g.amountUnknown ? '？' : `${g.sourceAmount || 0}g`;
     const additivesLabel = (g.additives || []).length
       ? ' + ' + g.additives.map(a => `${a.name}${a.amount}g`).join(' + ')
@@ -1422,15 +1444,16 @@ function renderGlazeTree(rec) {
     const tip = missing ? `配方本中未找到「${g.name}」对应的记录` : '点击跳转到对应记录';
     return `<li>
       <div class="glaze-tree-node ${cls}"${clickAttr} title="${escAttr(tip)}">
-        ${g.name || '(未命名)'} ← 取自 ${parentLabel} <span class="glaze-tree-amount">· ${amountLabel}${additivesLabel}</span>
+        ${g.name || '(未命名)'} ← 取自 ${escAttr(parentLabel)} <span class="glaze-tree-amount">· ${amountLabel}${additivesLabel}</span>
       </div>
       ${kidsHtml}
     </li>`;
   }
   const roots = childrenOf.get(null) || []; // null = 本记录基釉，非缺失值
-  const rootLabel = rec.num ? `${rec.num}号基釉 · ${rec.name}` : `基础釉 · ${rec.name}`;
+  const matchingBase = findMatchingPureBaseRecord(rec);
+  const matchHint = matchingBase ? ` <span class="glaze-tree-basematch">(与 ${escAttr(matchingBase.num ? matchingBase.num+' '+matchingBase.name : matchingBase.name)} 基釉相同)</span>` : '';
   const rootHtml = roots.length
-    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="本记录自身基础釉">${escAttr(rootLabel)}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
+    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="本记录自身基础釉">${escAttr(baseLabel)}${matchHint}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
     : '';
   const orphanHtml = orphanIdx.length ? `<ul>${orphanIdx.map(renderNode).join('')}</ul>` : '';
   if (!rootHtml && !orphanHtml) return '';
