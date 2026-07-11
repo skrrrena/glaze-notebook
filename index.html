@@ -886,12 +886,16 @@ let baseIngredients = [
   {name:'方解石', parts:10},
 ];
 
-let glazes = [
-  { name:'202号', sourceIndex:-1, sourceAmount:78, amountUnknown:false, additives:[{name:'氧化钴', amount:0.1}] },
-  { name:'204号', sourceIndex:0, sourceAmount:53, amountUnknown:false, additives:[{name:'轻质碳酸镁', amount:0.6}] },
-  { name:'205号', sourceIndex:1, sourceAmount:44.4, amountUnknown:false, additives:[{name:'轻质碳酸镁', amount:0.8}] },
-  { name:'206号', sourceIndex:2, sourceAmount:35.8, amountUnknown:false, additives:[{name:'氧化铜', amount:0.1}] },
-];
+let glazes = (() => {
+  const s1 = crypto.randomUUID(), s2 = crypto.randomUUID(), s3 = crypto.randomUUID(), s4 = crypto.randomUUID();
+  return [
+    // sourceId: null = 本记录基釉，非缺失值
+    { stepId: s1, name:'202号', sourceId:null, sourceAmount:78, amountUnknown:false, additives:[{name:'氧化钴', amount:0.1}] },
+    { stepId: s2, name:'204号', sourceId:s1, sourceAmount:53, amountUnknown:false, additives:[{name:'轻质碳酸镁', amount:0.6}] },
+    { stepId: s3, name:'205号', sourceId:s2, sourceAmount:44.4, amountUnknown:false, additives:[{name:'轻质碳酸镁', amount:0.8}] },
+    { stepId: s4, name:'206号', sourceId:s3, sourceAmount:35.8, amountUnknown:false, additives:[{name:'氧化铜', amount:0.1}] },
+  ];
+})();
 
 let favourites = [];
 let history = [];
@@ -1340,12 +1344,15 @@ async function confirmNbSave() {
       base_dry: parseFloat(document.getElementById('base-dry').value)||0,
       base_water: parseFloat(document.getElementById('base-water').value)||0,
       glazes: savingFromGlazeStep ? glazes.map(g=>({
+        stepId: g.stepId,
         name: g.name,
-        sourceIndex: g.sourceIndex,
-        // human-readable snapshot of what sourceIndex pointed to at save time —
-        // not used in any calculation, purely an audit trail in case the positional
+        // sourceId: null = 本记录基釉，非缺失值。非 null 时必须等于同一 glazes
+        // 数组内某个 step 的 stepId（结构化引用，不再依赖数组位置）。
+        sourceId: g.sourceId,
+        // human-readable snapshot of what sourceId pointed to at save time —
+        // not used in any calculation, purely an audit trail in case the
         // reference ever drifts (see findGlazeSourceIssues).
-        sourceName: g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || null),
+        sourceName: g.sourceId===null ? '基础釉' : (glazes.find(x=>x.stepId===g.sourceId)?.name || null),
         sourceAmount: g.sourceAmount,
         amountUnknown: !!g.amountUnknown,
         additives: g.additives.map(a=>({...a})),
@@ -1369,7 +1376,7 @@ async function confirmNbSave() {
 }
 
 // Notebook cards only ever showed the flat baseIngredients/additives of a record —
-// the sourceIndex/sourceName chain in rec.glazes (how this record was actually derived,
+// the sourceId/sourceName chain in rec.glazes (how this record was actually derived,
 // step by step) was computed but never surfaced. That's how 306 wearing 311's entire
 // derivation tree went unnoticed. Render it explicitly so a wrong chain is visible at a glance.
 //
@@ -1385,7 +1392,7 @@ function renderGlazeTree(rec) {
   const orphanIdx = [];
   arr.forEach((g, gi) => {
     if (issues[gi]) { orphanIdx.push(gi); return; }
-    const p = g.sourceIndex;
+    const p = g.sourceId; // null = 本记录基釉，非缺失值
     if (!childrenOf.has(p)) childrenOf.set(p, []);
     childrenOf.get(p).push(gi);
   });
@@ -1403,7 +1410,7 @@ function renderGlazeTree(rec) {
         ${kidsHtml}
       </li>`;
     }
-    const parentLabel = g.sourceIndex === -1 ? '基础釉' : (arr[g.sourceIndex]?.name || '上步');
+    const parentLabel = g.sourceId === null ? '基础釉' : (arr.find(x=>x.stepId===g.sourceId)?.name || '上步');
     const amountLabel = g.amountUnknown ? '？' : `${g.sourceAmount || 0}g`;
     const additivesLabel = (g.additives || []).length
       ? ' + ' + g.additives.map(a => `${a.name}${a.amount}g`).join(' + ')
@@ -1420,7 +1427,7 @@ function renderGlazeTree(rec) {
       ${kidsHtml}
     </li>`;
   }
-  const roots = childrenOf.get(-1) || [];
+  const roots = childrenOf.get(null) || []; // null = 本记录基釉，非缺失值
   const rootLabel = rec.num ? `${rec.num}号基釉 · ${rec.name}` : `基础釉 · ${rec.name}`;
   const rootHtml = roots.length
     ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="本记录自身基础釉">${escAttr(rootLabel)}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
@@ -1600,8 +1607,9 @@ function loadNbToCalc(ni) {
   if(rec.baseWater != null) document.getElementById('base-water').value = rec.baseWater;
   if(rec.glazes && rec.glazes.length > 0) {
     glazes = rec.glazes.map(g=>({
+      stepId: g.stepId,
       name: g.name,
-      sourceIndex: g.sourceIndex,
+      sourceId: g.sourceId, // null = 本记录基釉，非缺失值
       sourceAmount: g.sourceAmount,
       amountUnknown: !!g.amountUnknown,
       additives: (g.additives||[]).map(a=>({...a})),
@@ -1619,6 +1627,25 @@ function exportNotebook() {
   a.download=`釉料配方本_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
 }
+// Old pre-Supabase exported JSON (from before the stepId/sourceId migration) stores
+// glaze steps in positional sourceIndex form (-1 = 本记录基釉) with no stepId at all.
+// Detect that shape and convert it to stepId/sourceId at import time — the same
+// transform migrate.mjs applied to the database — so every record in memory from
+// this point on is uniformly in the new structural format.
+function convertLegacyGlazes(glazesArr) {
+  if (!glazesArr.length) return [];
+  if (glazesArr[0].stepId && !('sourceIndex' in glazesArr[0])) return glazesArr; // 已是新格式
+  const stepIds = glazesArr.map(() => crypto.randomUUID());
+  return glazesArr.map((g, gi) => {
+    const { sourceIndex, ...rest } = g;
+    return {
+      ...rest,
+      stepId: stepIds[gi],
+      // null = 本记录基釉，非缺失值
+      sourceId: (sourceIndex === -1 || sourceIndex == null) ? null : (stepIds[sourceIndex] ?? null),
+    };
+  });
+}
 function importNotebook(input) {
   const file=input.files[0]; if(!file)return;
   const r=new FileReader();
@@ -1630,7 +1657,7 @@ function importNotebook(input) {
       const toImport = imp.filter(rec => !existingLegacyIds.has(rec.id));
       let added=0, photoCount=0;
       for (const rec of toImport) {
-        const importedGlazes = rec.glazes||[];
+        const importedGlazes = convertLegacyGlazes(rec.glazes||[]);
         const sourceIssues = findGlazeSourceIssues(importedGlazes);
         Object.entries(sourceIssues).forEach(([gi, issue]) =>
           console.warn(`[导入 glazes 源引用异常] num=${rec.num} name=${rec.name} 第${gi}步「${importedGlazes[gi]?.name}」: ${issue}`));
@@ -1639,7 +1666,7 @@ function importNotebook(input) {
           base_ingredients: rec.baseIngredients||[], base_dry: rec.baseDry||0, base_water: rec.baseWater||0,
           glazes: importedGlazes.map(g => ({
             ...g,
-            sourceName: g.sourceName || (g.sourceIndex===-1 ? '基础釉' : (importedGlazes[g.sourceIndex]?.name || null)),
+            sourceName: g.sourceName || (g.sourceId===null ? '基础釉' : (importedGlazes.find(x=>x.stepId===g.sourceId)?.name || null)),
           })),
           additives: rec.additives||{}, photos: [],
         };
@@ -1696,25 +1723,24 @@ function addBase() { baseIngredients.push({name:'',parts:0}); renderBase(); }
 function removeBase(i) { baseIngredients.splice(i,1); renderBase(); }
 
 // ── glaze steps ──
-// sourceIndex is a positional reference into this same glazes array (-1 = 本条目基釉).
-// It's only ever written by addGlaze (append) and removeGlaze (which re-shifts every
-// reference), so today's UI can't produce a dangling one — but imported/legacy jsonb
-// or any future direct-array mutation could. Detect and surface that instead of silently
-// falling back to "基础釉"/"上步".
+// sourceId is a structural reference to another step's stepId within this same
+// glazes array (null = 本条目基釉，非缺失值). Deleting a step (removeGlaze) no
+// longer shifts anyone else's reference, so a sourceId that pointed at a removed
+// step becomes genuinely dangling here instead of being silently reassigned —
+// detect and surface that instead of silently falling back to "基础釉"/"上步".
 function findGlazeSourceIssues(glazesArr) {
   const issues = {};
+  const byStepId = new Map(glazesArr.map(g => [g.stepId, g]));
   glazesArr.forEach((g, gi) => {
-    const si = g.sourceIndex;
-    if (si === -1 || si === undefined || si === null) return;
-    if (typeof si !== 'number' || si < 0 || si >= glazesArr.length) {
-      issues[gi] = `sourceIndex 越界 (${si})`; return;
-    }
-    if (si === gi) { issues[gi] = '自引用'; return; }
-    let cur = si, seen = new Set([gi]), steps = 0;
-    while (cur !== -1 && cur !== undefined && cur !== null) {
-      if (seen.has(cur)) { issues[gi] = `成环 (回到第${cur}步)`; return; }
+    const sid = g.sourceId;
+    if (sid === null || sid === undefined) return;
+    if (!byStepId.has(sid)) { issues[gi] = `sourceId 找不到对应的步骤 (${sid})`; return; }
+    if (sid === g.stepId) { issues[gi] = '自引用'; return; }
+    let cur = sid, seen = new Set([g.stepId]), steps = 0;
+    while (cur !== null && cur !== undefined) {
+      if (seen.has(cur)) { issues[gi] = `成环 (回到 stepId=${cur})`; return; }
       seen.add(cur);
-      cur = glazesArr[cur]?.sourceIndex;
+      cur = byStepId.get(cur)?.sourceId;
       if (++steps > glazesArr.length + 2) { issues[gi] = '链路异常过长，疑似成环'; return; }
     }
   });
@@ -1728,8 +1754,8 @@ function renderGlazes() {
   Object.entries(sourceIssues).forEach(([gi, issue]) =>
     console.warn(`[glazes 源引用异常] 第${gi}步「${glazes[gi]?.name}」: ${issue}`));
   glazes.forEach((g,gi) => {
-    const sourceOpts = glazes.slice(0,gi).map((prev,pi)=>
-      `<option value="${pi}" ${g.sourceIndex===pi?'selected':''}>${prev.name}</option>`
+    const sourceOpts = glazes.slice(0,gi).map((prev)=>
+      `<option value="${prev.stepId}" ${g.sourceId===prev.stepId?'selected':''}>${prev.name}</option>`
     ).join('');
     const addRows = g.additives.map((a,ai)=>`
       <div class="additive-row">
@@ -1739,7 +1765,7 @@ function renderGlazes() {
       </div>
     `).join('');
     const srcIssue = sourceIssues[gi];
-    const srcLabel = srcIssue ? `⚠ 源引用异常：${srcIssue}` : (g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || '上步'));
+    const srcLabel = srcIssue ? `⚠ 源引用异常：${srcIssue}` : (g.sourceId===null ? '基础釉' : (glazes.find(x=>x.stepId===g.sourceId)?.name || '上步'));
     const isUnknown = !!g.amountUnknown;
     const amountField = isUnknown
       ? `<span class="amount-unknown-badge">？ 待定</span>`
@@ -1755,8 +1781,8 @@ function renderGlazes() {
       <div class="glaze-card-body">
         <div class="field-label" style="margin-bottom:4px">取自 <span style="font-weight:400;${srcIssue?'color:var(--danger)':'color:var(--ink3)'}">← ${srcLabel}</span></div>
         <div class="source-row">
-          <select onchange="glazes[${gi}].sourceIndex=parseInt(this.value);renderGlazes()">
-            <option value="-1" ${g.sourceIndex===-1?'selected':''}>基础釉</option>
+          <select onchange="glazes[${gi}].sourceId=(this.value===''?null:this.value);renderGlazes()">
+            <option value="" ${g.sourceId===null?'selected':''}>基础釉</option>
             ${sourceOpts}
           </select>
           <div>
@@ -1777,12 +1803,17 @@ function renderGlazes() {
   });
 }
 function addGlaze() {
-  glazes.push({name:`新釉料${glazes.length+1}`, sourceIndex:glazes.length>0?glazes.length-1:-1, sourceAmount:50, amountUnknown:false, additives:[]});
+  const prev = glazes[glazes.length-1];
+  glazes.push({stepId: crypto.randomUUID(), name:`新釉料${glazes.length+1}`, sourceId: prev ? prev.stepId : null, sourceAmount:50, amountUnknown:false, additives:[]});
   renderGlazes();
 }
 function removeGlaze(i) {
+  // stepId/sourceId are structural, not positional — deleting a step never shifts
+  // anyone else's reference. If another step's sourceId pointed at this one, it
+  // becomes a genuine dangling reference, surfaced by findGlazeSourceIssues (this
+  // is intentional: silently reassigning it to some other step is exactly the
+  // failure mode the stepId migration was meant to eliminate).
   glazes.splice(i,1);
-  glazes.forEach(g=>{ if(g.sourceIndex>=i) g.sourceIndex=Math.max(-1,g.sourceIndex-1); });
   renderGlazes();
 }
 function addAdditive(gi) { glazes[gi].additives.push({name:'',amount:0}); renderGlazes(); }
@@ -1808,20 +1839,29 @@ function calculate() {
   // additiveTotals: {name: total grams of additive in this sample}
   // totalWet: total wet weight of this glaze sample
   const glazeStates = [];
+  // stepId -> state, populated as each step is computed — replaces the old
+  // positional glazeStates[g.sourceIndex] lookup with a structural one, so a
+  // step can reference any earlier step's stepId regardless of array position.
+  const stateByStepId = new Map();
 
   for(let gi=0; gi<glazes.length; gi++) {
     const g = glazes[gi];
     // If amount unknown, push a sentinel so indices stay aligned
     if(g.amountUnknown) {
-      glazeStates.push({ unknown: true, totalWet: null, baseDry: null, additiveTotals: {} });
+      const s = { unknown: true, totalWet: null, baseDry: null, additiveTotals: {} };
+      glazeStates.push(s);
+      if(g.stepId) stateByStepId.set(g.stepId, s);
       continue;
     }
-    const srcRaw = g.sourceIndex===-1
+    // sourceId: null = 本记录基釉，非缺失值
+    const srcRaw = g.sourceId===null
       ? { totalWet: baseTotal, baseDry: baseDry, additiveTotals: {} }
-      : glazeStates[g.sourceIndex];
+      : stateByStepId.get(g.sourceId);
     // source is unknown or missing — propagate unknown
     if(!srcRaw || srcRaw.unknown) {
-      glazeStates.push({ unknown: true, totalWet: null, baseDry: null, additiveTotals: {} });
+      const s = { unknown: true, totalWet: null, baseDry: null, additiveTotals: {} };
+      glazeStates.push(s);
+      if(g.stepId) stateByStepId.set(g.stepId, s);
       continue;
     }
     const src = srcRaw;
@@ -1840,12 +1880,14 @@ function calculate() {
     });
 
     const totalAddedDry = g.additives.reduce((s,a)=>s+a.amount,0);
-    glazeStates.push({
+    const s = {
       unknown: false,
       totalWet: g.sourceAmount + totalAddedDry,
       baseDry: takenBaseDry,
       additiveTotals: newAdditives,
-    });
+    };
+    glazeStates.push(s);
+    if(g.stepId) stateByStepId.set(g.stepId, s);
   }
 
   lastGlazeStates = glazeStates;
@@ -1853,7 +1895,7 @@ function calculate() {
 
   glazeStates.forEach((s, i) => {
     const g = glazes[i];
-    const srcName = g.sourceIndex===-1 ? '基础釉' : glazes[g.sourceIndex].name;
+    const srcName = g.sourceId===null ? '基础釉' : (glazes.find(x=>x.stepId===g.sourceId)?.name || '上步');
 
     if(s.unknown) {
       // render a placeholder card for unknown-amount steps
@@ -1932,9 +1974,10 @@ function calculate() {
     base_dry: baseDry,
     base_water: baseWater,
     glazes: glazes.map(g=>({
+      stepId: g.stepId,
       name: g.name,
-      sourceIndex: g.sourceIndex,
-      sourceName: g.sourceIndex===-1 ? '基础釉' : (glazes[g.sourceIndex]?.name || null),
+      sourceId: g.sourceId, // null = 本记录基釉，非缺失值
+      sourceName: g.sourceId===null ? '基础釉' : (glazes.find(x=>x.stepId===g.sourceId)?.name || null),
       sourceAmount: g.sourceAmount,
       amountUnknown: !!g.amountUnknown,
       additives: g.additives.map(a=>({...a})),
@@ -2055,8 +2098,9 @@ async function confirmUpdateToNb() {
       base_dry: histRec.baseDry,
       base_water: histRec.baseWater,
       glazes: [{
+        stepId: crypto.randomUUID(),
         name: glaze.name,
-        sourceIndex: -1,
+        sourceId: null, // = 本记录基釉，非缺失值
         sourceName: '基础釉',
         sourceAmount: glaze.sourceAmount,
         amountUnknown: !!glaze.amountUnknown,
@@ -2136,8 +2180,9 @@ function loadHistory(ri) {
   document.getElementById('base-dry').value = rec.baseDry;
   document.getElementById('base-water').value = rec.baseWater;
   glazes = rec.glazes.map(g=>({
+    stepId: g.stepId,
     name: g.name,
-    sourceIndex: g.sourceIndex,
+    sourceId: g.sourceId, // null = 本记录基釉，非缺失值
     sourceAmount: g.sourceAmount,
     amountUnknown: !!g.amountUnknown,
     additives: g.additives.map(a=>({...a})),
@@ -2466,8 +2511,9 @@ async function importFavToNotebook(fi) {
 
   // Build glazes array
   const glazesForNb = isBase ? [] : [{
+    stepId: crypto.randomUUID(),
     name: fav.glazeName || fav.name,
-    sourceIndex: -1,
+    sourceId: null, // = 本记录基釉，非缺失值
     sourceAmount: fav.baseDry || 0,
     amountUnknown: false,
     additives: Object.entries(fav.additives||{}).map(([name, amount]) => ({ name, amount })),
