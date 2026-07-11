@@ -903,6 +903,13 @@ let notebook = [];
 let nbModalAdditives = [];
 let pendingSaveIndex = null;
 let lastGlazeStates = [];
+// Set by loadNbToCalc() to the exact chain it just loaded (label + JSON snapshot).
+// confirmNbSave() compares the live glazes[] against this at save time: if they still
+// match byte-for-byte, nothing was edited since the load, so a "存入配方本" here would
+// silently reattach another record's whole derivation tree to a brand new record —
+// the exact corruption pattern that hit 213/301/306. Any real edit (add/remove/change
+// a step) naturally breaks the string match, so no manual dirty-tracking is needed.
+let glazesLoadedFromNb = null;
 
 let nbBatchMode = false;
 let nbSelectedIds = new Set();
@@ -1338,6 +1345,17 @@ async function confirmNbSave() {
     // 306 ended up wearing another record's derivation tree).
     const glazeIdxRaw = document.getElementById('nb-modal-glaze-index').value;
     const savingFromGlazeStep = glazeIdxRaw !== '';
+    // If the live chain still matches exactly what loadNbToCalc() last loaded (i.e.
+    // nothing was added/edited since), saving it as a NEW record would silently give
+    // this record another record's entire derivation tree — same failure as 213/301/306.
+    if(savingFromGlazeStep && glazesLoadedFromNb && JSON.stringify(glazes) === glazesLoadedFromNb.json) {
+      const proceed = confirm(
+        `当前计算器里的这条链完全来自已有记录「${glazesLoadedFromNb.label}」，还没有做任何修改。\n\n`+
+        `确定要把这整条链（${glazes.length} 步）原样另存为新记录吗？\n\n`+
+        `如果这条新记录其实和「${glazesLoadedFromNb.label}」无关，请先取消，再修改链条后重试。`
+      );
+      if(!proceed) return;
+    }
     const payload = {
       num, name, note,
       base_ingredients: baseIngredients.map(i=>({...i})),
@@ -1628,16 +1646,20 @@ function loadNbToCalc(ni) {
   baseIngredients = (rec.baseIngredients||[]).map(i=>({...i}));
   if(rec.baseDry != null) document.getElementById('base-dry').value = rec.baseDry;
   if(rec.baseWater != null) document.getElementById('base-water').value = rec.baseWater;
-  if(rec.glazes && rec.glazes.length > 0) {
-    glazes = rec.glazes.map(g=>({
-      stepId: g.stepId,
-      name: g.name,
-      sourceId: g.sourceId, // null = 本记录基釉，非缺失值
-      sourceAmount: g.sourceAmount,
-      amountUnknown: !!g.amountUnknown,
-      additives: (g.additives||[]).map(a=>({...a})),
-    }));
-  }
+  // Always replace glazes with this record's own chain, even when it's empty — leaving
+  // a previously-loaded record's chain in place here (the old behavior when rec.glazes
+  // was empty) let a later "存入配方本" pair a stale chain with this record's base.
+  glazes = (rec.glazes||[]).map(g=>({
+    stepId: g.stepId,
+    name: g.name,
+    sourceId: g.sourceId, // null = 本记录基釉，非缺失值
+    sourceAmount: g.sourceAmount,
+    amountUnknown: !!g.amountUnknown,
+    additives: (g.additives||[]).map(a=>({...a})),
+  }));
+  glazesLoadedFromNb = glazes.length > 0
+    ? { label: rec.num ? `${rec.num} ${rec.name}` : rec.name, json: JSON.stringify(glazes) }
+    : null;
   renderBase();
   renderGlazes();
   switchTab('calc', document.querySelectorAll('.tab-btn')[0]);
