@@ -385,6 +385,42 @@
     border-top: 1px solid var(--nb-line);
     cursor: pointer;
   }
+  .chem-panel {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--nb-line);
+    font-family: 'DM Mono', monospace;
+  }
+  .chem-summary {
+    font-size: 0.72rem; color: var(--ink2); cursor: pointer; letter-spacing: 0.02em;
+  }
+  .chem-body { margin-top: 8px; }
+  .chem-cols { display: flex; gap: 18px; flex-wrap: wrap; }
+  .chem-col { min-width: 90px; }
+  .chem-col-title {
+    font-size: 0.65rem; color: var(--ink3); letter-spacing: 0.08em;
+    text-transform: uppercase; margin-bottom: 4px;
+  }
+  .chem-oxide-row {
+    display: flex; justify-content: space-between; gap: 12px;
+    font-size: 0.75rem; color: var(--ink); padding: 1px 0;
+  }
+  .chem-ratio {
+    font-size: 0.75rem; color: var(--ink); margin-top: 8px;
+  }
+  .chem-note {
+    display: block; font-size: 0.68rem; color: var(--ink3); font-style: italic; margin-top: 2px;
+  }
+  .chem-warning {
+    font-size: 0.72rem; color: var(--danger); line-height: 1.6;
+  }
+  .mat-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 8px;
+  }
+  .mat-row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap;
+  }
+  .mat-name { font-size: 0.85rem; min-width: 90px; }
+  .mat-note { font-size: 0.7rem; color: var(--ink3); font-style: italic; }
   .nb-add-note {
     font-size: 0.75rem; color: var(--ink3); cursor: pointer;
     font-family: 'DM Mono', monospace; margin-top: 8px;
@@ -668,6 +704,7 @@
   <button class="tab-btn tab-hist" onclick="switchTab('hist',this)">历史记录 <span id="hist-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-nb" onclick="switchTab('nb',this)">配方本 <span id="nb-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-fav" onclick="switchTab('fav',this)">收藏夹 <span id="fav-count-badge" class="fav-count"></span></button>
+  <button class="tab-btn tab-mat" onclick="switchTab('mat',this)">原料库</button>
 </div>
 
 <!-- calc tab -->
@@ -775,6 +812,16 @@
       </div>
     </div>
     <div id="fav-list"></div>
+  </div>
+</div>
+
+<!-- materials tab -->
+<div class="tab-panel" id="tab-mat">
+  <div class="fav-panel">
+    <div class="fav-toolbar">
+      <span class="import-hint">氧化物成分数据用于「Seger 化学分析」计算；typical 为教科书典型值，仅供参考，供应商实测数据请手动更正并勾选"已核对"。</span>
+    </div>
+    <div id="materials-list"></div>
   </div>
 </div>
 
@@ -915,6 +962,7 @@ let nbBatchMode = false;
 let nbSelectedIds = new Set();
 let favBatchMode = false;
 let favSelectedIds = new Set();
+let materials = [];
 
 // ── auth ──
 async function sendMagicLink() {
@@ -971,17 +1019,35 @@ function rowToHistory(row) {
     glazes: row.glazes||[], glazeStates: row.glaze_states||[],
   };
 }
+function rowToMaterial(row) {
+  return {
+    id: row.id, name: row.name, aliases: row.aliases||[], role: row.role||'base',
+    oxides: row.oxides||{}, loi: row.loi||0, source: row.source||'typical',
+    verified: !!row.verified, note: row.note||'',
+  };
+}
 
 // ── boot: fetch everything for the signed-in user, then render ──
 async function boot() {
-  const [nbRes, favRes, histRes] = await Promise.all([
+  const [nbRes, favRes, histRes, matRes] = await Promise.all([
     sb.from('notebook_entries').select('*').order('created_at', {ascending:false}),
     sb.from('favourites').select('*').order('created_at', {ascending:false}),
     sb.from('history_entries').select('*').order('created_at', {ascending:false}).limit(50),
+    sb.from('materials').select('*').order('name'),
   ]);
   notebook = (nbRes.data||[]).map(rowToNotebook);
   favourites = (favRes.data||[]).map(rowToFavourite);
   history = (histRes.data||[]).map(rowToHistory);
+  materials = (matRes.data||[]).map(rowToMaterial);
+
+  // First login for this account: give them a starting materials library (typical
+  // textbook values, all flagged source:'typical'/verified:false) instead of an empty
+  // one — each account edits its own copy from here on (per-user isolation, same as
+  // notebook/favourites), so seeding is a one-time per-account bootstrap, not shared data.
+  if(materials.length === 0) {
+    const { data, error } = await sb.from('materials').insert(MATERIAL_SEED).select();
+    if(!error) materials = (data||[]).map(rowToMaterial);
+  }
 
   await Promise.all([resolvePhotoUrls(notebook), resolvePhotoUrls(favourites)]);
 
@@ -993,6 +1059,7 @@ async function boot() {
   renderNotebook();
   renderFavourites();
   renderHistory();
+  renderMaterials();
 }
 
 // ── photo storage (Supabase Storage) ──
@@ -1227,6 +1294,235 @@ function _openPhotoLb(regKey, idx) {
   openLightbox(photos, idx);
 }
 
+// ── Seger 式化学分析 ──
+// 参考文档：需求文档_Seger化学分析.md §4。这里只是种子数据(source:'typical')，每个
+// 账号首次登录时各自拷贝一份到自己的 materials 表，之后各自独立编辑/校准。
+const MATERIAL_SEED = [
+  // -- 基釉原料 / role: base --
+  { name:'石英', role:'base', oxides:{SiO2:100}, loi:0, source:'typical', verified:false, note:'纯净' },
+  { name:'高岭土', role:'base', oxides:{Al2O3:39.5, SiO2:46.5}, loi:13.9, source:'typical', verified:false, note:'理论值(Al2O3·2SiO2·2H2O)' },
+  { name:'钾长石', role:'base', oxides:{K2O:11.0, Na2O:3.0, Al2O3:17.5, SiO2:67.5}, loi:0.3, source:'typical', verified:false, note:'⚠️ 商业长石成分因产地差异较大，务必用供应商分析单替换' },
+  { name:'方解石', role:'base', oxides:{CaO:56.0}, loi:44.0, source:'typical', verified:false, note:'CaCO3' },
+  { name:'氧化锌', role:'base', oxides:{ZnO:100}, loi:0, source:'typical', verified:false, note:'' },
+  { name:'烧滑石', role:'base', oxides:{MgO:35.2, SiO2:64.8}, loi:0, source:'typical', verified:false, note:'⚠️ 假设为煅烧滑石(无LOI)；若实际用的是生滑石，应为 MgO 31.7 / SiO2 63.4 / LOI 4.8，需确认后修改' },
+  { name:'碳酸钡', role:'base', oxides:{BaO:77.7}, loi:22.3, source:'typical', verified:false, note:'BaCO3' },
+  { name:'碳酸镁', role:'base', oxides:{MgO:47.8}, loi:52.2, source:'typical', verified:false, note:'MgCO3' },
+  // -- 配方性添加剂 / role: base --
+  { name:'轻质碳酸镁', role:'base', oxides:{MgO:42.5}, loi:57.5, source:'typical', verified:false, note:'⚠️ 碱式碳酸镁(如 4MgCO3·Mg(OH)2·4H2O)，成分因产品而异，不能直接套用普通碳酸镁的值，务必查供应商数据' },
+  { name:'磷酸钙', role:'base', oxides:{CaO:54, P2O5:46}, loi:1, source:'typical', verified:false, note:'Ca3(PO4)2；若实际用的是骨灰，应为 CaO 55 / P2O5 42 / LOI 2' },
+  { name:'钛长石粉', role:'base', oxides:{}, loi:0, source:'typical', verified:false, note:'⚠️ 成分未知，必须由用户提供供应商数据。含此原料的配方在补齐前无法计算 Seger 式' },
+  // -- 着色剂 / role: colorant（不计入 Seger，只报外加%）--
+  { name:'氧化铁', role:'colorant', oxides:{Fe2O3:100}, loi:0, source:'typical', verified:false, note:'' },
+  { name:'煅烧铁颗粒', role:'colorant', oxides:{Fe2O3:100}, loi:0, source:'typical', verified:false, note:'颗粒态，用作结晶核；化学上是 Fe2O3，但物理形态是关键，不宜简单当作溶解态铁看待' },
+  { name:'氧化铜', role:'colorant', oxides:{CuO:100}, loi:0, source:'typical', verified:false, note:'' },
+  { name:'氧化钴', role:'colorant', oxides:{CoO:100}, loi:0, source:'typical', verified:false, note:'⚠️ 市售"氧化钴"常为 Co3O4，需确认' },
+  { name:'氧化锰', role:'colorant', oxides:{MnO2:100}, loi:0, source:'typical', verified:false, note:'烧成中失氧变 MnO' },
+  { name:'氧化镍', role:'colorant', oxides:{NiO:100}, loi:0, source:'typical', verified:false, note:'' },
+  { name:'T51215翠绿色剂', role:'colorant', oxides:{}, loi:0, source:'typical', verified:false, note:'商业色剂，成分为专有配方，不计入 Seger，仅记录外加%' },
+  { name:'T60324大红色剂', role:'colorant', oxides:{}, loi:0, source:'typical', verified:false, note:'商业色剂，成分为专有配方，不计入 Seger，仅记录外加%' },
+  { name:'大红色剂', role:'colorant', oxides:{}, loi:0, source:'typical', verified:false, note:'商业色剂，成分为专有配方，不计入 Seger，仅记录外加%' },
+  { name:'大红', role:'colorant', oxides:{}, loi:0, source:'typical', verified:false, note:'商业色剂，成分为专有配方，不计入 Seger，仅记录外加%' },
+  { name:'T60324哑光特黑', role:'colorant', oxides:{}, loi:0, source:'typical', verified:false, note:'商业色剂，成分为专有配方，不计入 Seger，仅记录外加%' },
+  // -- 乳浊剂 / role: opacifier（默认不计入 unity 归一化，单独报告 ZrO2）--
+  { name:'锆3号', role:'opacifier', oxides:{ZrO2:67.2, SiO2:32.8}, loi:0, source:'typical', verified:false, note:'⚠️ 需确认是否为硅酸锆 ZrSiO4' },
+  { name:'T60324锆3号', role:'opacifier', oxides:{ZrO2:67.2, SiO2:32.8}, loi:0, source:'typical', verified:false, note:'⚠️ 需确认是否为硅酸锆 ZrSiO4' },
+];
+
+// 分子量(§3.2)。用户后续新增原料若用到表外氧化物，计算时会明确标出“未知分子量”，不会静默出错。
+const OXIDE_MW = {
+  SiO2:60.08, Al2O3:101.96, K2O:94.20, Na2O:61.98, CaO:56.08, MgO:40.30,
+  ZnO:81.38, BaO:153.33, Li2O:29.88, SrO:103.62, B2O3:69.62, TiO2:79.87,
+  ZrO2:123.22, P2O5:141.94, Fe2O3:159.69, CuO:79.55, CoO:74.93, MnO:70.94, NiO:74.69,
+};
+const FLUX_OXIDES = new Set(['K2O','Na2O','CaO','MgO','ZnO','BaO','SrO','Li2O','PbO']);
+const AMPHOTERIC_OXIDES = new Set(['Al2O3','B2O3']);
+const FORMER_OXIDES = new Set(['SiO2','TiO2','ZrO2']);
+const ALKALI_FLUX = new Set(['K2O','Na2O','Li2O']);
+const ALKALINE_EARTH_FLUX = new Set(['CaO','MgO','SrO']);
+
+function findMaterial(name) {
+  const n = (name||'').trim();
+  if(!n) return null;
+  return materials.find(m => m.name === n || (m.aliases||[]).includes(n)) || null;
+}
+
+// baseIngredients: [{name,parts}]；additivesObj: {name: pctOfBaseDry}（与 notebook 记录/
+// 计算结果里的 additives 是同一种形状，pct 是相对基釉干料的百分比）。
+// 返回 {ok:false, reason, detail} 或 {ok:true, unity, ratios, fluxBreakdown, colorants, opacifiers, reliabilityNotes}
+function computeSegerFormula(baseIngredients, additivesObj) {
+  const base = (baseIngredients||[]).filter(i => i.parts > 0);
+  const totalBaseParts = base.reduce((s,i)=>s+i.parts, 0);
+  if(totalBaseParts === 0) return { ok:false, reason:'empty' };
+
+  if(base.some(i => i.name.trim().toUpperCase() === 'NA')) {
+    return { ok:false, reason:'market', detail:'市售成品釉，无配方数据，无法计算 Seger 式' };
+  }
+
+  const contributions = []; // {name, weight, material}
+  const colorants = [];     // {name, pct}
+  const opacifiers = [];    // {name, pct, material}
+  const missing = [];       // {name, reason: 'not_found' | 'no_data'}
+
+  base.forEach(i => {
+    const m = findMaterial(i.name);
+    if(!m) { missing.push({name:i.name, reason:'not_found'}); return; }
+    if(Object.keys(m.oxides||{}).length === 0) { missing.push({name:i.name, reason:'no_data'}); return; }
+    contributions.push({ name:i.name, weight:i.parts, material:m });
+  });
+
+  Object.entries(additivesObj||{}).forEach(([name, pct]) => {
+    if(!pct) return;
+    const m = findMaterial(name);
+    if(!m) { missing.push({name, reason:'not_found'}); return; }
+    if(m.role === 'surface') return; // 表面撒料，完全忽略
+    if(m.role === 'colorant') { colorants.push({name, pct}); return; }
+    if(m.role === 'opacifier') { opacifiers.push({name, pct, material:m}); return; }
+    // role === 'base'
+    if(Object.keys(m.oxides||{}).length === 0) { missing.push({name, reason:'no_data'}); return; }
+    contributions.push({ name, weight: pct/100*totalBaseParts, material:m });
+  });
+
+  if(missing.length) return { ok:false, reason:'missing_material', detail:missing };
+
+  const oxideGrams = {};
+  const unknownOxides = new Set();
+  contributions.forEach(c => {
+    Object.entries(c.material.oxides).forEach(([ox,pctOfMaterial]) => {
+      if(!(ox in OXIDE_MW)) { unknownOxides.add(ox); return; }
+      oxideGrams[ox] = (oxideGrams[ox]||0) + c.weight * pctOfMaterial/100;
+    });
+  });
+
+  const molesByOxide = {};
+  Object.entries(oxideGrams).forEach(([ox,g]) => { molesByOxide[ox] = g / OXIDE_MW[ox]; });
+
+  const fluxTotal = Object.entries(molesByOxide).reduce((s,[ox,mol]) => s + (FLUX_OXIDES.has(ox)?mol:0), 0);
+  if(fluxTotal === 0) return { ok:false, reason:'no_flux' };
+
+  const unity = {};
+  Object.entries(molesByOxide).forEach(([ox,mol]) => { unity[ox] = mol / fluxTotal; });
+
+  const sga = (unity['SiO2'] && unity['Al2O3']) ? unity['SiO2']/unity['Al2O3'] : null;
+
+  const fluxBreakdown = { alkali:0, alkalineEarth:0, other:0 };
+  Object.entries(unity).forEach(([ox,v]) => {
+    if(!FLUX_OXIDES.has(ox)) return;
+    if(ALKALI_FLUX.has(ox)) fluxBreakdown.alkali += v;
+    else if(ALKALINE_EARTH_FLUX.has(ox)) fluxBreakdown.alkalineEarth += v;
+    else fluxBreakdown.other += v;
+  });
+
+  const reliabilityNotes = [];
+  const typicalMats = [...new Set(contributions.filter(c=>c.material.source==='typical').map(c=>c.name))];
+  if(typicalMats.length) reliabilityNotes.push(`以下原料成分为教科书典型值，非供应商实测：${typicalMats.join('、')}`);
+  if(unknownOxides.size) reliabilityNotes.push(`以下氧化物不在分子量表中，未计入摩尔计算：${[...unknownOxides].join('、')}`);
+
+  return {
+    ok:true, unity, ratios:{ sga }, fluxBreakdown,
+    colorants, opacifiers, reliabilityNotes,
+  };
+}
+
+function sgaInterpretation(sga) {
+  if(sga == null) return '配方中无 Al2O3，无法计算硅铝比';
+  if(sga < 4) return '硅铝比 < 4:1，可能欠熔/生烧';
+  if(sga <= 6) return '硅铝比 4:1–6:1，偏哑光区间';
+  if(sga <= 8) return '硅铝比 7:1–8:1，偏半哑光/缎面区间';
+  if(sga <= 10) return '硅铝比 8:1–10:1，偏亮光区间';
+  return '硅铝比 > 10:1，偏高硅，可能烧不熟或表面干涩（视温度而定）';
+}
+
+function renderChemPanel(baseIngredients, additivesObj) {
+  const r = computeSegerFormula(baseIngredients, additivesObj);
+  if(!r.ok) {
+    if(r.reason === 'empty') return '';
+    const msg = r.reason === 'market' ? r.detail
+      : r.reason === 'no_flux' ? '配方中没有可识别的熔剂氧化物，无法归一化计算'
+      : r.reason === 'missing_material'
+        ? '含未知/成分不全的原料：' + r.detail.map(m => `${m.name}${m.reason==='not_found'?'(原料库中未找到)':'(成分数据不全)'}`).join('、')
+        : '无法计算';
+    return `<details class="chem-panel"><summary class="chem-summary">⚠️ 化学分析（不可用）</summary>
+      <div class="chem-warning">${msg}</div>
+    </details>`;
+  }
+
+  const oxideRow = (ox, v) => v ? `<div class="chem-oxide-row"><span>${ox}</span><span>${v.toFixed(3)}</span></div>` : '';
+  const fluxRows = Object.entries(r.unity).filter(([ox])=>FLUX_OXIDES.has(ox)).map(([ox,v])=>oxideRow(ox,v)).join('');
+  const amphRows = Object.entries(r.unity).filter(([ox])=>AMPHOTERIC_OXIDES.has(ox)).map(([ox,v])=>oxideRow(ox,v)).join('');
+  const formRows = Object.entries(r.unity).filter(([ox])=>FORMER_OXIDES.has(ox)).map(([ox,v])=>oxideRow(ox,v)).join('');
+  const otherRows = Object.entries(r.unity).filter(([ox])=>!FLUX_OXIDES.has(ox)&&!AMPHOTERIC_OXIDES.has(ox)&&!FORMER_OXIDES.has(ox)).map(([ox,v])=>oxideRow(ox,v)).join('');
+
+  const colorantRows = r.colorants.map(c=>`<div class="chem-oxide-row"><span>${c.name}</span><span>外加 ${(+c.pct).toFixed(4)}%</span></div>`).join('');
+  const opacifierRows = r.opacifiers.map(o=>{
+    const zr = o.material.oxides.ZrO2 ? ` (其中 ZrO2 约 ${(o.pct * o.material.oxides.ZrO2/100).toFixed(4)}%)` : '';
+    return `<div class="chem-oxide-row"><span>${o.name}</span><span>外加 ${(+o.pct).toFixed(4)}%${zr}</span></div>`;
+  }).join('');
+
+  const flux = r.fluxBreakdown;
+  const fluxSummary = `碱金属(K2O+Na2O+Li2O) ${(flux.alkali*100).toFixed(1)}% · 碱土(CaO+MgO+SrO) ${(flux.alkalineEarth*100).toFixed(1)}% · 其他(ZnO/BaO等) ${(flux.other*100).toFixed(1)}%`;
+
+  return `<details class="chem-panel">
+    <summary class="chem-summary">🧪 化学分析（Seger 式，参考值）</summary>
+    <div class="chem-body">
+      <div class="chem-cols">
+        <div class="chem-col"><div class="chem-col-title">RO / R2O</div>${fluxRows}</div>
+        <div class="chem-col"><div class="chem-col-title">R2O3</div>${amphRows}</div>
+        <div class="chem-col"><div class="chem-col-title">RO2</div>${formRows}</div>
+        ${otherRows ? `<div class="chem-col"><div class="chem-col-title">其他</div>${otherRows}</div>` : ''}
+      </div>
+      <div class="chem-ratio">SiO2:Al2O3 = ${r.ratios.sga!=null ? r.ratios.sga.toFixed(2)+':1' : '—'}<span class="chem-note">${sgaInterpretation(r.ratios.sga)}（经验区间，随烧成温度变化，建议用自己的试片数据校准）</span></div>
+      <div class="chem-ratio">${fluxSummary}</div>
+      ${colorantRows ? `<div class="chem-col-title" style="margin-top:8px">着色剂外加%</div>${colorantRows}` : ''}
+      ${opacifierRows ? `<div class="chem-col-title" style="margin-top:8px">乳浊剂外加%</div>${opacifierRows}` : ''}
+      ${r.reliabilityNotes.length ? `<div class="chem-warning" style="margin-top:8px">${r.reliabilityNotes.join('<br>')}</div>` : ''}
+    </div>
+  </details>`;
+}
+
+// ── 原料库管理 ──
+function parseOxideInput(str) {
+  const o = {};
+  (str||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(p => {
+    const [k,v] = p.split(':').map(s=>s.trim());
+    if(k && v && !isNaN(parseFloat(v))) o[k] = parseFloat(v);
+  });
+  return o;
+}
+async function updateMaterialField(id, field, value) {
+  const m = materials.find(x=>x.id===id);
+  if(!m) return;
+  m[field] = value;
+  await sb.from('materials').update({[field]: value}).eq('id', id);
+}
+function renderMaterials() {
+  const wrap = document.getElementById('materials-list');
+  if(!wrap) return;
+  wrap.innerHTML = materials.map(m => {
+    const oxideStr = Object.entries(m.oxides||{}).map(([k,v])=>`${k}:${v}`).join(', ');
+    return `
+    <div class="mat-card">
+      <div class="mat-row">
+        <strong class="mat-name">${m.name}</strong>
+        <select onchange="updateMaterialField('${m.id}','role',this.value)">
+          ${['base','colorant','opacifier','surface'].map(r=>`<option value="${r}" ${m.role===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+        <select onchange="updateMaterialField('${m.id}','source',this.value)">
+          ${['typical','supplier','user'].map(s=>`<option value="${s}" ${m.source===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <label style="font-size:0.72rem"><input type="checkbox" ${m.verified?'checked':''} onchange="updateMaterialField('${m.id}','verified',this.checked)"> 已核对</label>
+      </div>
+      <div class="mat-row">
+        <label style="font-size:0.7rem;color:var(--ink3)">氧化物(重量% 格式 SiO2:60.08, ...)</label>
+        <input type="text" value="${oxideStr}" style="flex:1;font-family:'DM Mono',monospace;font-size:0.75rem"
+          onchange="updateMaterialField('${m.id}','oxides', parseOxideInput(this.value))">
+        <label style="font-size:0.7rem;color:var(--ink3)">LOI%</label>
+        <input type="number" step="0.1" value="${m.loi}" style="width:70px" onchange="updateMaterialField('${m.id}','loi',parseFloat(this.value)||0)">
+      </div>
+      ${m.note ? `<div class="mat-note">${m.note}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 // ── tab switching ──
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1236,6 +1532,7 @@ function switchTab(name, btn) {
   if(name==='fav') renderFavourites();
   if(name==='hist') renderHistory();
   if(name==='nb') renderNotebook();
+  if(name==='mat') renderMaterials();
 }
 
 // ── notebook ──
@@ -1537,6 +1834,7 @@ function renderNotebook() {
           <div class="nb-section-label">基础原料</div>
           <div class="nb-row">${baseTags}</div>
           ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
+          ${renderChemPanel(rec.baseIngredients, rec.additives)}
           ${renderGlazeTree(rec)}
           <div id="nbnote-display-${ni}" onclick="editNbNote(${ni})" style="cursor:pointer">
             ${rec.note
@@ -1985,6 +2283,11 @@ function calculate() {
     // source amount label — clarify what the number means
     const srcAmtLabel = `取自 ${srcName} 中的 ${g.sourceAmount}g<span style="font-size:0.62rem;opacity:0.7">（湿釉，含干料+水）</span>`;
 
+    // same shape as a notebook record's additives field ({name: pctOfBaseDry}), so it
+    // can go straight into renderChemPanel without any conversion.
+    const chemAdditives = {};
+    Object.entries(s.additiveTotals).forEach(([name,amt]) => { chemAdditives[name] = amt / s.baseDry * 100; });
+
     html += `
       <div class="result-block">
         <div class="result-head">
@@ -2007,6 +2310,7 @@ function calculate() {
             ${addRows}
           </tbody>
         </table>
+        <div style="padding:0 16px 12px">${renderChemPanel(baseIngredients, chemAdditives)}</div>
       </div>
     `;
   });

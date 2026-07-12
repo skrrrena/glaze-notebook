@@ -54,10 +54,31 @@ create table public.history_entries (
 );
 create index history_entries_user_id_idx on public.history_entries(user_id);
 
+-- ── materials（原料化学成分库，Seger 式分析用；每用户各自维护一份）──
+create table public.materials (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  name       text not null,
+  aliases    jsonb not null default '[]'::jsonb,           -- [alias, ...]
+  role       text not null default 'base'
+             check (role in ('base','colorant','opacifier','surface')),
+  oxides     jsonb not null default '{}'::jsonb,           -- {SiO2: 67.5, ...} 原料重量的百分比（不含 LOI）
+  loi        numeric not null default 0,                    -- 烧失量百分比；oxides 各项 + loi 应约等于 100
+  source     text not null default 'typical'
+             check (source in ('typical','supplier','user')),
+  verified   boolean not null default false,
+  note       text default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index materials_user_id_idx on public.materials(user_id);
+create unique index materials_user_name_uidx on public.materials(user_id, name);
+
 -- ── RLS：每个人只能读写自己的行 ──
 alter table public.notebook_entries enable row level security;
 alter table public.favourites        enable row level security;
 alter table public.history_entries   enable row level security;
+alter table public.materials         enable row level security;
 
 create policy "nb select own"  on public.notebook_entries for select using (auth.uid() = user_id);
 create policy "nb insert own"  on public.notebook_entries for insert with check (auth.uid() = user_id);
@@ -73,6 +94,11 @@ create policy "hist select own" on public.history_entries for select using (auth
 create policy "hist insert own" on public.history_entries for insert with check (auth.uid() = user_id);
 create policy "hist delete own" on public.history_entries for delete using (auth.uid() = user_id);
 -- history 没有 update 策略：记录写入后不再修改
+
+create policy "mat select own" on public.materials for select using (auth.uid() = user_id);
+create policy "mat insert own" on public.materials for insert with check (auth.uid() = user_id);
+create policy "mat update own" on public.materials for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "mat delete own" on public.materials for delete using (auth.uid() = user_id);
 
 -- ── 每用户历史记录只保留最近 50 条（对应旧版客户端 history.slice(0,50)）──
 create or replace function public.trim_history() returns trigger
@@ -101,6 +127,8 @@ $$;
 create trigger notebook_set_updated_at before update on public.notebook_entries
   for each row execute function public.set_updated_at();
 create trigger favourites_set_updated_at before update on public.favourites
+  for each row execute function public.set_updated_at();
+create trigger materials_set_updated_at before update on public.materials
   for each row execute function public.set_updated_at();
 
 -- ── Storage：私有 bucket + 按 user_id 分文件夹隔离 ──
