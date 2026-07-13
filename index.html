@@ -45,27 +45,27 @@
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --paper:        #211E1A;
-      --paper-raised: #2A2620;
-      --paper-sunk:   #34302A;
-      --line:         #4A443B;
-      --ink:          #EDE9E1;
-      --ink-2:        #C7C0B3;
-      --ink-3:        #8F8578;
-      --ink-4:        #6E6558;
-      --accent:       #D89A6B;
+      --paper:        #1A1917;
+      --paper-raised: #24221E;
+      --paper-sunk:   #2E2B26;
+      --line:         #43403A;
+      --ink:          #EDEAE3;
+      --ink-2:        #C9C3B7;
+      --ink-3:        #A89C8C;
+      --ink-4:        #99907F;
+      --accent:       #E0A576;
     }
   }
   :root[data-theme="dark"] {
-    --paper:        #211E1A;
-    --paper-raised: #2A2620;
-    --paper-sunk:   #34302A;
-    --line:         #4A443B;
-    --ink:          #EDE9E1;
-    --ink-2:        #C7C0B3;
-    --ink-3:        #8F8578;
-    --ink-4:        #6E6558;
-    --accent:       #D89A6B;
+    --paper:        #1A1917;
+    --paper-raised: #24221E;
+    --paper-sunk:   #2E2B26;
+    --line:         #43403A;
+    --ink:          #EDEAE3;
+    --ink-2:        #C9C3B7;
+    --ink-3:        #A89C8C;
+    --ink-4:        #99907F;
+    --accent:       #E0A576;
   }
   :root[data-theme="light"] {
     --paper:        #EDE9E1;
@@ -422,7 +422,6 @@
   }
   .nb-star-btn:hover { color: var(--accent); }
   .nb-star-btn-on { color: var(--accent); }
-  #nb-star-filter-btn.nb-star-filter-active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .nb-body { padding: 14px 16px; }
   .nb-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
   .nb-ingredient-tag {
@@ -435,15 +434,16 @@
     padding: 3px 9px; border-radius: 3px;
     background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line);
   }
+  .nb-effect-tags { margin-left: 10px; }
   .nb-effect-tag {
-    display: inline-block; font-family: var(--font-serif);
-    background: transparent; border: 1px solid var(--accent); color: var(--accent);
-    border-radius: 999px; padding: 2px 11px;
-    font-size: 0.85em; letter-spacing: 0.05em;
+    font-family: var(--font-serif);
+    background: transparent; border: none; border-radius: 0; padding: 0;
+    color: var(--accent); font-size: 0.85em; letter-spacing: 0.05em;
   }
+  .nb-effect-tag + .nb-effect-tag { margin-left: 8px; }
   .nb-note {
     font-size: 0.78rem; color: var(--ink2); line-height: 1.6;
-    font-style: italic; margin-top: 8px; padding-top: 8px;
+    margin-top: 8px; padding-top: 8px;
     border-top: 1px solid var(--nb-line);
     cursor: pointer;
   }
@@ -469,7 +469,7 @@
     font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink); margin-top: 8px;
   }
   .chem-note {
-    display: block; font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); font-style: italic; margin-top: 2px;
+    display: block; font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); margin-top: 2px;
   }
   .chem-warning {
     font-size: 0.72rem; color: var(--danger); line-height: 1.6;
@@ -482,7 +482,7 @@
     display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap;
   }
   .mat-name { font-size: 0.85rem; min-width: 90px; }
-  .mat-note { font-size: 0.7rem; color: var(--ink3); font-style: italic; }
+  .mat-note { font-size: 0.7rem; color: var(--ink3); }
   .nb-add-note {
     font-size: 0.75rem; color: var(--ink3); cursor: pointer;
     font-family: var(--font-mono); margin-top: 8px;
@@ -519,13 +519,13 @@
     color: var(--ink-3); cursor: default; text-decoration: underline dotted var(--line);
   }
   .glaze-tree-missing, .glaze-tree-missing:hover {
-    color: var(--ink-4); cursor: default; font-style: italic;
+    color: var(--ink-4); cursor: default;
   }
   .glaze-tree-active, .glaze-tree-active:hover {
     color: var(--accent); font-weight: 600;
   }
   .glaze-tree-note {
-    display: block; font-size: 0.66rem; color: var(--accent); font-style: italic;
+    display: block; font-size: 0.66rem; color: var(--accent);
     margin: 2px 0 0 4px;
   }
   @keyframes nbCardFlash {
@@ -847,7 +847,6 @@
     <div class="nb-toolbar">
       <span class="import-hint" id="nb-toolbar-count"></span>
       <div class="nb-toolbar-right">
-        <button class="io-btn" id="nb-star-filter-btn" onclick="toggleNbStarFilter()">☆ 我的好釉</button>
         <button class="io-btn io-btn-export" onclick="exportNotebook()">↓ 导出 JSON</button>
         <button class="io-btn io-btn-import" onclick="document.getElementById('nb-import-input').click()">↑ 导入 JSON</button>
         <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
@@ -1059,7 +1058,6 @@ let glazesLoadedFromNb = null;
 
 let nbBatchMode = false;
 let nbSelectedIds = new Set();
-let nbFilterStarred = false;
 // num of the record currently open in the edit modal, so any glaze-tree elsewhere
 // on the page that references it by name can highlight the matching node.
 let nbActiveEditNum = null;
@@ -2171,25 +2169,12 @@ function jumpToNbByLabel(label) {
 function renderNotebook() {
   const wrap = document.getElementById('nb-list');
   const countEl = document.getElementById('nb-toolbar-count');
-  const starBtn = document.getElementById('nb-star-filter-btn');
-  if(starBtn) {
-    starBtn.classList.toggle('nb-star-filter-active', nbFilterStarred);
-    starBtn.textContent = nbFilterStarred ? '★ 我的好釉' : '☆ 我的好釉';
-  }
-  const shownCount = nbFilterStarred ? notebook.filter(r=>r.starred).length : notebook.length;
-  if(countEl) countEl.textContent = notebook.length > 0 ? `共 ${notebook.length} 条配方${nbFilterStarred ? `，其中 ${shownCount} 条星标` : ''}` : '';
+  if(countEl) countEl.textContent = notebook.length > 0 ? `共 ${notebook.length} 条配方` : '';
   if(notebook.length===0) {
     wrap.innerHTML = `<div class="nb-empty"><div class="big">册</div>配方本是空的<br>从计算结果「存入配方本」，或点右上角手动新建</div>`;
     return;
   }
-  if(nbFilterStarred && shownCount===0) {
-    wrap.innerHTML = `<div class="nb-empty"><div class="big">☆</div>还没有星标的配方<br>点卡片上的星标按钮，把偏爱的效果标出来</div>`;
-    return;
-  }
-  wrap.innerHTML = notebook.map((rec,ni) => {
-    if(nbFilterStarred && !rec.starred) return '';
-    return nbCardHtml(rec, ni, 'nb');
-  }).join('');
+  wrap.innerHTML = notebook.map((rec,ni) => nbCardHtml(rec, ni, 'nb')).join('');
   updateNbBatchCount();
 }
 
@@ -2211,7 +2196,7 @@ function nbCardHtml(rec, ni, idPrefix) {
     rec.dataConfidence && rec.dataConfidence !== '可靠' ? `<span class="nb-additive-tag" style="color:var(--danger)">数据：${rec.dataConfidence}</span>` : '',
   ].join('');
   const effectTagsHtml = (rec.effectTags||[]).length
-    ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${rec.effectTags.map(t=>`<span class="nb-effect-tag">${t}</span>`).join('')}</div>`
+    ? `<span class="nb-effect-tags">${rec.effectTags.map(t=>`<span class="nb-effect-tag">◇ ${t}</span>`).join('')}</span>`
     : '';
   // batch-select is a notebook-tab-only UI mode; the starred tab has no batch bar
   const showBatchUi = idPrefix === 'nb' && nbBatchMode;
@@ -2222,13 +2207,12 @@ function nbCardHtml(rec, ni, idPrefix) {
         ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
         <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
         ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
-        <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
+        <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
         <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
           <input type="text" id="${idPrefix}name-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
           <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
           <button class="nb-del-btn" onclick="cancelNbName(${ni},'${idPrefix}')">✕</button>
         </div>
-        ${effectTagsHtml}
         <div class="nb-date">${rec.savedAt}</div>
         <div class="nb-actions">
           <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
@@ -2290,10 +2274,6 @@ async function toggleNbStar(ni) {
   rec.starred = !rec.starred;
   await sb.from('notebook_entries').update({starred: rec.starred}).eq('id', rec.id);
   renderNbAndFav();
-}
-function toggleNbStarFilter() {
-  nbFilterStarred = !nbFilterStarred;
-  renderNotebook();
 }
 function toggleNbBatchMode() {
   nbBatchMode = !nbBatchMode;
