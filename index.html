@@ -243,7 +243,7 @@
   }
   .divider { border: none; border-top: 1px solid var(--line); margin: 1.2rem 0; }
 
-  /* ── favourites panel ── */
+  /* ── shared panel/toolbar/badge styles (history, notebook, starred tabs) ── */
   .fav-panel { padding: 2rem; }
   .fav-toolbar {
     display: flex; gap: 8px; margin-bottom: 1.4rem; align-items: center;
@@ -267,7 +267,6 @@
   }
   .card-check { margin-right: 2px; cursor: pointer; accent-color: var(--nb); }
   .nb-card-selected { box-shadow: 0 0 0 2px var(--nb) inset; }
-  .fav-card-selected { box-shadow: 0 0 0 2px var(--fav) inset; }
   .fav-empty {
     text-align: center; padding: 4rem 2rem;
     color: var(--ink3); font-size: 0.85rem; line-height: 2;
@@ -307,8 +306,6 @@
   .fav-del-btn:hover { background: #fdf0ee; color: var(--danger); border-color: var(--danger); }
 
   .fav-body { padding: 12px 16px; }
-  .fav-note { font-size: 0.78rem; color: var(--ink2); line-height: 1.6; margin-bottom: 10px; font-style: italic; }
-  .fav-summary { font-size: 0.78rem; color: var(--ink3); font-family: 'DM Mono', monospace; line-height: 1.8; }
   .fav-tag {
     display: inline-block; font-size: 0.65rem;
     font-family: 'DM Mono', monospace;
@@ -367,6 +364,13 @@
     border: 1px solid var(--line); cursor: pointer; transition: all 0.12s;
   }
   .nb-del-btn:hover { background: #fdf0ee; color: var(--danger); border-color: var(--danger); }
+  .nb-star-btn {
+    font-size: 0.95rem; line-height: 1; background: none; border: none; cursor: pointer;
+    color: var(--ink3); padding: 2px; transition: all 0.12s;
+  }
+  .nb-star-btn:hover { color: var(--accent2); }
+  .nb-star-btn-on { color: var(--accent2); }
+  #nb-star-filter-btn.nb-star-filter-active { background: var(--accent2); color: #fff; border-color: var(--accent2); }
   .nb-body { padding: 14px 16px; }
   .nb-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
   .nb-ingredient-tag {
@@ -461,6 +465,10 @@
   }
   .glaze-tree-active, .glaze-tree-active:hover {
     border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600;
+  }
+  .glaze-tree-note {
+    display: block; font-size: 0.64rem; color: var(--ink3); font-style: italic;
+    margin: 2px 0 0 4px;
   }
   @keyframes nbCardFlash {
     0%, 100% { box-shadow: 0 0 0 2px transparent inset; }
@@ -706,7 +714,7 @@
   <button class="tab-btn active" onclick="switchTab('calc',this)">配方计算</button>
   <button class="tab-btn tab-hist" onclick="switchTab('hist',this)">历史记录 <span id="hist-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-nb" onclick="switchTab('nb',this)">配方本 <span id="nb-count-badge" class="fav-count"></span></button>
-  <button class="tab-btn tab-fav" onclick="switchTab('fav',this)">收藏夹 <span id="fav-count-badge" class="fav-count"></span></button>
+  <button class="tab-btn tab-fav" onclick="switchTab('fav',this)">收藏 <span id="fav-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-mat" onclick="switchTab('mat',this)">原料库</button>
   <button class="tab-btn tab-fc" onclick="switchTab('fc',this)">烧成曲线</button>
   <button class="tab-btn tab-calib" onclick="switchTab('calib',this)">规律校准</button>
@@ -733,8 +741,7 @@
           <input type="number" id="base-water" value="160" min="0" step="1">
         </div>
       </div>
-      <button class="btn-ghost" style="margin-top:10px;border-style:solid;color:var(--fav);border-color:var(--fav-line);" onclick="openBaseModal()">☆ 收藏此基础釉</button>
-      <button class="btn-ghost" style="margin-top:6px;border-style:solid;color:var(--nb);border-color:var(--nb-line);" onclick="openBaseNbModal()">册 存入配方本</button>
+      <button class="btn-ghost" style="margin-top:10px;border-style:solid;color:var(--nb);border-color:var(--nb-line);" onclick="openBaseNbModal()">册 存入配方本</button>
 
       <hr class="divider">
 
@@ -775,6 +782,7 @@
     <div class="nb-toolbar">
       <span class="import-hint" id="nb-toolbar-count"></span>
       <div class="nb-toolbar-right">
+        <button class="io-btn" id="nb-star-filter-btn" onclick="toggleNbStarFilter()">☆ 我的好釉</button>
         <button class="io-btn io-btn-export" onclick="exportNotebook()">↓ 导出 JSON</button>
         <button class="io-btn io-btn-import" onclick="document.getElementById('nb-import-input').click()">↑ 导入 JSON</button>
         <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
@@ -795,26 +803,11 @@
   </div>
 </div>
 
-<!-- favourites tab -->
+<!-- starred (favourites) tab -->
 <div class="tab-panel" id="tab-fav">
   <div class="fav-panel">
     <div class="fav-toolbar">
       <span class="import-hint" id="fav-toolbar-count"></span>
-      <div class="fav-toolbar-right">
-        <button class="io-btn io-btn-export" onclick="exportFavourites()">↓ 导出 JSON</button>
-        <button class="io-btn io-btn-import" onclick="document.getElementById('import-input').click()">↑ 导入 JSON</button>
-        <input type="file" id="import-input" accept=".json" style="display:none" onchange="importFavourites(this)">
-        <button class="io-btn" id="fav-batch-btn" onclick="toggleFavBatchMode()">☑ 批量删除</button>
-      </div>
-    </div>
-    <div class="batch-bar" id="fav-batch-bar" style="display:none">
-      <button class="io-btn io-btn-export" onclick="favSelectAll()">全选</button>
-      <button class="io-btn io-btn-export" onclick="favSelectNone()">取消全选</button>
-      <span class="import-hint" id="fav-batch-count-label">已选 0 条</span>
-      <div class="fav-toolbar-right">
-        <button class="io-btn" style="color:var(--danger);border-color:#e8c4be" onclick="deleteFavBatch()">删除选中</button>
-        <button class="io-btn io-btn-export" onclick="toggleFavBatchMode()">取消</button>
-      </div>
     </div>
     <div id="fav-list"></div>
   </div>
@@ -902,22 +895,6 @@
   </div>
 </div>
 
-<!-- save modal -->
-<div class="modal-overlay" id="modal" onclick="closeModal(event)">
-  <div class="modal">
-    <h3 id="modal-title">收藏配方</h3>
-    <input type="hidden" id="modal-type" value="additive">
-    <div class="field-label">配方名称</div>
-    <input type="text" id="modal-name" placeholder="如：蓝色大结晶釉 205号" maxlength="40">
-    <div class="field-label">备注（可选）</div>
-    <textarea id="modal-note" placeholder="烧成温度、效果描述、下次调整方向…"></textarea>
-    <div class="modal-btns">
-      <button class="modal-cancel" onclick="closeModal()">取消</button>
-      <button class="modal-confirm" onclick="confirmSave()">保存到收藏夹</button>
-    </div>
-  </div>
-</div>
-
 <!-- update-to-notebook picker modal -->
 <div class="updmodal-overlay" id="upd-modal" onclick="closeUpdModal(event)">
   <div class="updmodal">
@@ -948,7 +925,6 @@
 </div>
 <!-- hidden photo inputs -->
 <input type="file" id="nb-photo-input" accept="image/*" multiple style="display:none" onchange="handleNbPhotoUpload(this)">
-<input type="file" id="fav-photo-input" accept="image/*" multiple style="display:none" onchange="handleFavPhotoUpload(this)">
 
 <script>
 // ── Supabase client ──
@@ -980,7 +956,6 @@ let glazes = (() => {
   ];
 })();
 
-let favourites = [];
 let history = [];
 let notebook = [];
 let nbModalAdditives = [];
@@ -996,11 +971,10 @@ let glazesLoadedFromNb = null;
 
 let nbBatchMode = false;
 let nbSelectedIds = new Set();
+let nbFilterStarred = false;
 // num of the record currently open in the edit modal, so any glaze-tree elsewhere
 // on the page that references it by name can highlight the matching node.
 let nbActiveEditNum = null;
-let favBatchMode = false;
-let favSelectedIds = new Set();
 let materials = [];
 let firingCurves = [];
 
@@ -1045,15 +1019,7 @@ function rowToNotebook(row) {
     peakTempOverride: row.peak_temp_override ?? null,
     dataConfidence: row.data_confidence || '可靠',
     effectTags: row.effect_tags || [],
-  };
-}
-function rowToFavourite(row) {
-  return {
-    id: row.id, legacyId: row.legacy_id, name: row.name, note: row.note||'', type: row.type,
-    glazeName: row.glaze_name, baseIngredients: row.base_ingredients||[],
-    baseDry: row.base_dry||0, baseWater: row.base_water||0, additives: row.additives||{},
-    photos: (row.photos||[]).map(p=>({...p})),
-    savedAt: fmtDate(row.created_at),
+    starred: !!row.starred,
   };
 }
 function rowToHistory(row) {
@@ -1081,15 +1047,13 @@ function rowToFiringCurve(row) {
 
 // ── boot: fetch everything for the signed-in user, then render ──
 async function boot() {
-  const [nbRes, favRes, histRes, matRes, fcRes] = await Promise.all([
+  const [nbRes, histRes, matRes, fcRes] = await Promise.all([
     sb.from('notebook_entries').select('*').order('created_at', {ascending:false}),
-    sb.from('favourites').select('*').order('created_at', {ascending:false}),
     sb.from('history_entries').select('*').order('created_at', {ascending:false}).limit(50),
     sb.from('materials').select('*').order('name'),
     sb.from('firing_curves').select('*').order('name'),
   ]);
   notebook = (nbRes.data||[]).map(rowToNotebook);
-  favourites = (favRes.data||[]).map(rowToFavourite);
   history = (histRes.data||[]).map(rowToHistory);
   materials = (matRes.data||[]).map(rowToMaterial);
   firingCurves = (fcRes.data||[]).map(rowToFiringCurve);
@@ -1097,7 +1061,7 @@ async function boot() {
   // First login for this account: give them a starting materials library (typical
   // textbook values, all flagged source:'typical'/verified:false) instead of an empty
   // one — each account edits its own copy from here on (per-user isolation, same as
-  // notebook/favourites), so seeding is a one-time per-account bootstrap, not shared data.
+  // notebook), so seeding is a one-time per-account bootstrap, not shared data.
   if(materials.length === 0) {
     const { data, error } = await sb.from('materials').insert(MATERIAL_SEED).select();
     if(!error) materials = (data||[]).map(rowToMaterial);
@@ -1107,15 +1071,13 @@ async function boot() {
     if(!error) firingCurves = (data||[]).map(rowToFiringCurve);
   }
 
-  await Promise.all([resolvePhotoUrls(notebook), resolvePhotoUrls(favourites)]);
+  await resolvePhotoUrls(notebook);
 
   renderBase();
   renderGlazes();
-  updateFavBadge();
   updateHistBadge();
   updateNbBadge();
-  renderNotebook();
-  renderFavourites();
+  renderNbAndFav();
   renderHistory();
   renderMaterials();
   renderFiringCurves();
@@ -1143,7 +1105,7 @@ function _blobFromDataURL(dataURL) {
   return new Blob([bytes], {type: mime});
 }
 
-function _recordsForTable(table) { return table === 'notebook_entries' ? notebook : favourites; }
+function _recordsForTable(table) { return notebook; }
 function _findRecord(table, id) { return _recordsForTable(table).find(r => r.id === id); }
 
 async function savePhotosField(table, id, photos) {
@@ -1240,7 +1202,7 @@ async function uploadPhotos(table, id, files, rerenderFn) {
   const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
   if(!imageFiles.length) return;
   const encoded = await Promise.all(imageFiles.map(f => resizeAndEncode(f, PHOTO_SIZE)));
-  const folder = table === 'notebook_entries' ? 'notebook' : 'favourites';
+  const folder = 'notebook';
   const newEntries = [];
   for (const dataURL of encoded) {
     const path = `${currentUserId}/${folder}/${id}/${crypto.randomUUID()}.jpg`;
@@ -1274,26 +1236,10 @@ function triggerNbPhoto(id) {
 }
 async function handleNbPhotoUpload(input) {
   if(!nbPhotoTargetId || !input.files.length) return;
-  await uploadPhotos('notebook_entries', nbPhotoTargetId, input.files, renderNotebook);
+  await uploadPhotos('notebook_entries', nbPhotoTargetId, input.files, renderNbAndFav);
 }
 async function deleteNbPhoto(id, idx) {
-  await deletePhoto('notebook_entries', id, idx, renderNotebook);
-}
-
-// ── favourites photos ──
-let favPhotoTargetId = null;
-function triggerFavPhoto(id) {
-  favPhotoTargetId = id;
-  const input = document.getElementById('fav-photo-input');
-  input.value = '';
-  input.click();
-}
-async function handleFavPhotoUpload(input) {
-  if(!favPhotoTargetId || !input.files.length) return;
-  await uploadPhotos('favourites', favPhotoTargetId, input.files, renderFavourites);
-}
-async function deleteFavPhoto(id, idx) {
-  await deletePhoto('favourites', id, idx, renderFavourites);
+  await deletePhoto('notebook_entries', id, idx, renderNbAndFav);
 }
 
 // global registry so onclick handlers can reference photos safely
@@ -1316,7 +1262,8 @@ function _attachDragDrop(btn, table, id, rerenderFn) {
   });
 }
 
-function renderPhotoGallery(photos, table, id, styleClass, triggerFn, deleteFn) {
+function renderPhotoGallery(photos, table, id, styleClass, triggerFn, deleteFn, idPrefix) {
+  idPrefix = idPrefix || styleClass;
   const regKey = table + ':' + id;
   _photoRegistry[regKey] = photos;
 
@@ -1333,9 +1280,7 @@ function renderPhotoGallery(photos, table, id, styleClass, triggerFn, deleteFn) 
     </div>`;
   }).join('');
 
-  // Determine rerender function name from table
-  const rerenderFnName = table === 'notebook_entries' ? 'renderNotebook' : 'renderFavourites';
-  const addBtnId = `photo-add-${table}-${id}`;
+  const addBtnId = `photo-add-${idPrefix}-${id}`;
   const addBtn = `<div class="photo-item">
       <button id="${addBtnId}" class="photo-add-btn ${styleClass}"
         onclick="${triggerFn}('${id}')" title="拖拽图片到这里，或点击上传">＋</button>
@@ -1343,7 +1288,7 @@ function renderPhotoGallery(photos, table, id, styleClass, triggerFn, deleteFn) 
 
   requestAnimationFrame(() => {
     const btn = document.getElementById(addBtnId);
-    if(btn) _attachDragDrop(btn, table, id, window[rerenderFnName]);
+    if(btn) _attachDragDrop(btn, table, id, renderNbAndFav);
   });
 
   return `<div class="photo-gallery ${styleClass}-style"><div class="photo-strip">${thumbs}${addBtn}</div></div>`;
@@ -1823,7 +1768,7 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
-  if(name==='fav') renderFavourites();
+  if(name==='fav') renderFavTab();
   if(name==='hist') renderHistory();
   if(name==='nb') renderNotebook();
   if(name==='mat') renderMaterials();
@@ -1908,7 +1853,7 @@ function openNbModalEdit(ni) {
   setTimeout(()=>document.getElementById('nb-modal-name').focus(), 50);
 
   nbActiveEditNum = rec.num || null;
-  renderNotebook();
+  renderNbAndFav();
 }
 
 function renderNbModalAdditives() {
@@ -1930,7 +1875,7 @@ function nbModalAddAdditive() {
 function closeNbModal(e) {
   if(!e || e.target===document.getElementById('nb-modal')) {
     document.getElementById('nb-modal').classList.remove('open');
-    if(nbActiveEditNum !== null) { nbActiveEditNum = null; renderNotebook(); }
+    if(nbActiveEditNum !== null) { nbActiveEditNum = null; renderNbAndFav(); }
   }
 }
 
@@ -2007,7 +1952,7 @@ async function confirmNbSave() {
   updateNbBadge();
   document.getElementById('nb-modal').classList.remove('open');
   nbActiveEditNum = null;
-  renderNotebook();
+  renderNbAndFav();
   // flash nb save btn if from result
   document.querySelectorAll('.nb-save-btn').forEach(b=>{
     if(b.dataset.done) return;
@@ -2092,10 +2037,12 @@ function renderGlazeTree(rec) {
     const cls = [missing ? 'glaze-tree-missing' : '', active ? 'glaze-tree-active' : ''].filter(Boolean).join(' ');
     const clickAttr = missing ? '' : ` onclick="jumpToNbByLabel('${escAttr(g.name)}')"`;
     const tip = missing ? `配方本中未找到「${g.name}」对应的记录` : '点击跳转到对应记录';
+    const noteHtml = g.note ? `<span class="glaze-tree-note">📝 ${escAttr(g.note)}</span>` : '';
     return `<li>
       <div class="glaze-tree-node ${cls}"${clickAttr} title="${escAttr(tip)}">
         ${g.name || '(未命名)'} ← 取自 ${escAttr(parentLabel)} <span class="glaze-tree-amount">· ${amountLabel}${additivesLabel}</span>
       </div>
+      ${noteHtml}
       ${kidsHtml}
     </li>`;
   }
@@ -2136,71 +2083,127 @@ function jumpToNbByLabel(label) {
 function renderNotebook() {
   const wrap = document.getElementById('nb-list');
   const countEl = document.getElementById('nb-toolbar-count');
-  if(countEl) countEl.textContent = notebook.length > 0 ? `共 ${notebook.length} 条配方` : '';
+  const starBtn = document.getElementById('nb-star-filter-btn');
+  if(starBtn) {
+    starBtn.classList.toggle('nb-star-filter-active', nbFilterStarred);
+    starBtn.textContent = nbFilterStarred ? '★ 我的好釉' : '☆ 我的好釉';
+  }
+  const shownCount = nbFilterStarred ? notebook.filter(r=>r.starred).length : notebook.length;
+  if(countEl) countEl.textContent = notebook.length > 0 ? `共 ${notebook.length} 条配方${nbFilterStarred ? `，其中 ${shownCount} 条星标` : ''}` : '';
   if(notebook.length===0) {
     wrap.innerHTML = `<div class="nb-empty"><div class="big">册</div>配方本是空的<br>从计算结果「存入配方本」，或点右上角手动新建</div>`;
     return;
   }
+  if(nbFilterStarred && shownCount===0) {
+    wrap.innerHTML = `<div class="nb-empty"><div class="big">☆</div>还没有星标的配方<br>点卡片上的星标按钮，把偏爱的效果标出来</div>`;
+    return;
+  }
   wrap.innerHTML = notebook.map((rec,ni) => {
-    const baseTags = (rec.baseIngredients||[]).map(i=>
-      `<span class="nb-ingredient-tag">${i.name} ${i.parts}</span>`
-    ).join('');
-    const addTags = Object.entries(rec.additives||{}).map(([name,pct])=>
-      `<span class="nb-additive-tag">${name} +${(+pct).toFixed(3)}%</span>`
-    ).join('');
-    const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
-    const metaBadges = [
-      fc ? `<span class="nb-ingredient-tag">窑：${fc.name}</span>` : '',
-      rec.dataConfidence && rec.dataConfidence !== '可靠' ? `<span class="nb-additive-tag" style="color:var(--danger)">数据：${rec.dataConfidence}</span>` : '',
-      ...(rec.effectTags||[]).map(t=>`<span class="nb-ingredient-tag">${t}</span>`),
-    ].join('');
-
-    return `
-      <div class="nb-card ${nbBatchMode && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="nb-card-${ni}">
-        <div class="nb-card-head">
-          ${nbBatchMode ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
-          ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
-          <div class="nb-name" id="nbname-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni})" title="点击改名">${rec.name} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>
-          <div id="nbname-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
-            <input type="text" id="nbname-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni});if(event.key==='Escape')cancelNbName(${ni})">
-            <button class="nb-load-btn" onclick="saveNbName(${ni})">保存</button>
-            <button class="nb-del-btn" onclick="cancelNbName(${ni})">✕</button>
-          </div>
-          <div class="nb-date">${rec.savedAt}</div>
-          <div class="nb-actions">
-            <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
-            <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
-            <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
-          </div>
-        </div>
-        <div class="nb-body">
-          <div class="nb-section-label">基础原料</div>
-          <div class="nb-row">${baseTags}</div>
-          ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
-          ${metaBadges ? `<div class="nb-row" style="margin-top:4px">${metaBadges}</div>` : ''}
-          ${renderChemPanel(rec.baseIngredients, rec.additives)}
-          ${renderGlazeTree(rec)}
-          <div id="nbnote-display-${ni}" onclick="editNbNote(${ni})" style="cursor:pointer">
-            ${rec.note
-              ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>`
-              : `<div class="nb-add-note">＋ 添加备注</div>`}
-          </div>
-          <div id="nbnote-edit-${ni}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--nb-line)">
-            <textarea id="nbnote-input-${ni}" style="width:100%;min-height:52px;font-size:0.78rem;margin-bottom:6px">${rec.note||''}</textarea>
-            <div style="display:flex;gap:6px">
-              <button class="nb-load-btn" style="flex:1" onclick="saveNbNote(${ni})">保存</button>
-              <button class="nb-del-btn" style="white-space:nowrap" onclick="insertBlankLine('nbnote-input-${ni}')">↵ 空行</button>
-              <button class="nb-del-btn" onclick="cancelNbNote(${ni})">取消</button>
-            </div>
-          </div>
-          ${renderPhotoGallery(rec.photos||[], 'notebook_entries', rec.id, 'nb', 'triggerNbPhoto', 'deleteNbPhoto')}
-        </div>
-      </div>
-    `;
+    if(nbFilterStarred && !rec.starred) return '';
+    return nbCardHtml(rec, ni, 'nb');
   }).join('');
   updateNbBatchCount();
 }
 
+// Shared by the notebook tab and the starred (收藏) tab so a starred record renders
+// as an identical card — photos/tree/note/chemistry — in both places. idPrefix keeps
+// every card-scoped DOM id unique per container: both tabs stay in the DOM at once
+// (switchTab only toggles .active), so reusing bare ids for the same record in both
+// would collide and break the name/note inline editors and photo-upload buttons.
+function nbCardHtml(rec, ni, idPrefix) {
+  const baseTags = (rec.baseIngredients||[]).map(i=>
+    `<span class="nb-ingredient-tag">${i.name} ${i.parts}</span>`
+  ).join('');
+  const addTags = Object.entries(rec.additives||{}).map(([name,pct])=>
+    `<span class="nb-additive-tag">${name} +${(+pct).toFixed(3)}%</span>`
+  ).join('');
+  const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
+  const metaBadges = [
+    fc ? `<span class="nb-ingredient-tag">窑：${fc.name}</span>` : '',
+    rec.dataConfidence && rec.dataConfidence !== '可靠' ? `<span class="nb-additive-tag" style="color:var(--danger)">数据：${rec.dataConfidence}</span>` : '',
+    ...(rec.effectTags||[]).map(t=>`<span class="nb-ingredient-tag">${t}</span>`),
+  ].join('');
+  // batch-select is a notebook-tab-only UI mode; the starred tab has no batch bar
+  const showBatchUi = idPrefix === 'nb' && nbBatchMode;
+
+  return `
+    <div class="nb-card ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
+      <div class="nb-card-head">
+        ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
+        <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
+        ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
+        <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>
+        <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
+          <input type="text" id="${idPrefix}name-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
+          <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
+          <button class="nb-del-btn" onclick="cancelNbName(${ni},'${idPrefix}')">✕</button>
+        </div>
+        <div class="nb-date">${rec.savedAt}</div>
+        <div class="nb-actions">
+          <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
+          <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
+          <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
+        </div>
+      </div>
+      <div class="nb-body">
+        <div class="nb-section-label">基础原料</div>
+        <div class="nb-row">${baseTags}</div>
+        ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
+        ${metaBadges ? `<div class="nb-row" style="margin-top:4px">${metaBadges}</div>` : ''}
+        ${renderChemPanel(rec.baseIngredients, rec.additives)}
+        ${renderGlazeTree(rec)}
+        <div id="${idPrefix}note-display-${ni}" onclick="editNbNote(${ni},'${idPrefix}')" style="cursor:pointer">
+          ${rec.note
+            ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>`
+            : `<div class="nb-add-note">＋ 添加备注</div>`}
+        </div>
+        <div id="${idPrefix}note-edit-${ni}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--nb-line)">
+          <textarea id="${idPrefix}note-input-${ni}" style="width:100%;min-height:52px;font-size:0.78rem;margin-bottom:6px">${rec.note||''}</textarea>
+          <div style="display:flex;gap:6px">
+            <button class="nb-load-btn" style="flex:1" onclick="saveNbNote(${ni},'${idPrefix}')">保存</button>
+            <button class="nb-del-btn" style="white-space:nowrap" onclick="insertBlankLine('${idPrefix}note-input-${ni}')">↵ 空行</button>
+            <button class="nb-del-btn" onclick="cancelNbNote(${ni},'${idPrefix}')">取消</button>
+          </div>
+        </div>
+        ${renderPhotoGallery(rec.photos||[], 'notebook_entries', rec.id, 'nb', 'triggerNbPhoto', 'deleteNbPhoto', idPrefix)}
+      </div>
+    </div>
+  `;
+}
+
+// ── 收藏 (starred) tab: same card component as the notebook tab, filtered to starred===true ──
+function renderFavTab() {
+  const starred = notebook.filter(r=>r.starred);
+  const badge = document.getElementById('fav-count-badge');
+  if(badge) badge.textContent = starred.length > 0 ? `(${starred.length})` : '';
+  const countEl = document.getElementById('fav-toolbar-count');
+  if(countEl) countEl.textContent = starred.length > 0 ? `共 ${starred.length} 条收藏` : '';
+  const wrap = document.getElementById('fav-list');
+  if(starred.length === 0) {
+    wrap.innerHTML = `<div class="fav-empty"><div class="big">☆</div>还没有收藏的釉。在配方本里点 ☆ 收藏你喜欢的效果。</div>`;
+    return;
+  }
+  wrap.innerHTML = notebook.map((rec,ni) => rec.starred ? nbCardHtml(rec, ni, 'fav') : '').join('');
+}
+
+// Mutation sites whose effect could be visible in both tabs at once (they're both
+// permanently in the DOM — switchTab only toggles .active) must refresh both, or the
+// tab you're not looking at goes stale until its next full render.
+function renderNbAndFav() {
+  renderNotebook();
+  renderFavTab();
+}
+
+async function toggleNbStar(ni) {
+  const rec = notebook[ni];
+  rec.starred = !rec.starred;
+  await sb.from('notebook_entries').update({starred: rec.starred}).eq('id', rec.id);
+  renderNbAndFav();
+}
+function toggleNbStarFilter() {
+  nbFilterStarred = !nbFilterStarred;
+  renderNotebook();
+}
 function toggleNbBatchMode() {
   nbBatchMode = !nbBatchMode;
   if(!nbBatchMode) nbSelectedIds.clear();
@@ -2239,40 +2242,40 @@ async function deleteNbBatch() {
   document.getElementById('nb-batch-bar').style.display = 'none';
   document.getElementById('nb-batch-btn').textContent = '☑ 批量删除';
   updateNbBadge();
-  renderNotebook();
+  renderNbAndFav();
 }
 
-function editNbName(ni) {
-  document.getElementById(`nbname-display-${ni}`).style.display='none';
-  const el = document.getElementById(`nbname-edit-${ni}`);
+function editNbName(ni, idPrefix='nb') {
+  document.getElementById(`${idPrefix}name-display-${ni}`).style.display='none';
+  const el = document.getElementById(`${idPrefix}name-edit-${ni}`);
   el.style.display='flex'; el.style.flex='1';
-  document.getElementById(`nbname-input-${ni}`).focus();
+  document.getElementById(`${idPrefix}name-input-${ni}`).focus();
 }
-function cancelNbName(ni) {
-  document.getElementById(`nbname-display-${ni}`).style.display='';
-  document.getElementById(`nbname-edit-${ni}`).style.display='none';
+function cancelNbName(ni, idPrefix='nb') {
+  document.getElementById(`${idPrefix}name-display-${ni}`).style.display='';
+  document.getElementById(`${idPrefix}name-edit-${ni}`).style.display='none';
 }
-async function saveNbName(ni) {
-  const v = document.getElementById(`nbname-input-${ni}`).value.trim();
+async function saveNbName(ni, idPrefix='nb') {
+  const v = document.getElementById(`${idPrefix}name-input-${ni}`).value.trim();
   if(!v) return;
   notebook[ni].name = v;
   await sb.from('notebook_entries').update({name:v}).eq('id', notebook[ni].id);
-  renderNotebook();
+  renderNbAndFav();
 }
-function editNbNote(ni) {
-  document.getElementById(`nbnote-display-${ni}`).style.display='none';
-  document.getElementById(`nbnote-edit-${ni}`).style.display='block';
-  document.getElementById(`nbnote-input-${ni}`).focus();
+function editNbNote(ni, idPrefix='nb') {
+  document.getElementById(`${idPrefix}note-display-${ni}`).style.display='none';
+  document.getElementById(`${idPrefix}note-edit-${ni}`).style.display='block';
+  document.getElementById(`${idPrefix}note-input-${ni}`).focus();
 }
-function cancelNbNote(ni) {
-  document.getElementById(`nbnote-display-${ni}`).style.display='block';
-  document.getElementById(`nbnote-edit-${ni}`).style.display='none';
+function cancelNbNote(ni, idPrefix='nb') {
+  document.getElementById(`${idPrefix}note-display-${ni}`).style.display='block';
+  document.getElementById(`${idPrefix}note-edit-${ni}`).style.display='none';
 }
-async function saveNbNote(ni) {
-  const v = document.getElementById(`nbnote-input-${ni}`).value.trim();
+async function saveNbNote(ni, idPrefix='nb') {
+  const v = document.getElementById(`${idPrefix}note-input-${ni}`).value.trim();
   notebook[ni].note = v;
   await sb.from('notebook_entries').update({note:v}).eq('id', notebook[ni].id);
-  renderNotebook();
+  renderNbAndFav();
 }
 async function deleteNb(ni) {
   if(!confirm(`删除「${notebook[ni].name}」？`)) return;
@@ -2281,7 +2284,7 @@ async function deleteNb(ni) {
   await sb.from('notebook_entries').delete().eq('id', rec.id);
   notebook.splice(ni,1);
   updateNbBadge();
-  renderNotebook();
+  renderNbAndFav();
 }
 function loadNbToCalc(ni) {
   const rec = notebook[ni];
@@ -2639,7 +2642,7 @@ function calculate() {
             <strong>${g.name}</strong>
             <span>${srcAmtLabel}</span>
           </div>
-          <button class="nb-save-btn save-btn" style="margin-right:4px" onclick="openNbModal(${i}, lastGlazeStates[${i}])">存入配方本</button><button class="save-btn" onclick="openSaveModal(${i})">收藏</button>
+          <button class="nb-save-btn save-btn" onclick="openNbModal(${i}, lastGlazeStates[${i}])">存入配方本</button>
         </div>
         <table>
           <thead>
@@ -2918,381 +2921,6 @@ function openBaseNbModal() {
 
   document.getElementById('nb-modal').classList.add('open');
   setTimeout(()=>document.getElementById('nb-modal-num').focus(), 50);
-}
-
-// ── save modal ──
-function openBaseModal() {
-  document.getElementById('modal-title').textContent = '收藏基础釉';
-  document.getElementById('modal-type').value = 'base';
-  document.getElementById('modal-name').value = '';
-  document.getElementById('modal-name').placeholder = '如：201号大结晶釉';
-  document.getElementById('modal-note').value = '';
-  document.getElementById('modal').classList.add('open');
-  setTimeout(()=>document.getElementById('modal-name').focus(), 50);
-}
-
-function openSaveModal(glazeIndex) {
-  document.getElementById('modal-title').textContent = '收藏配方';
-  document.getElementById('modal-type').value = 'additive';
-  document.getElementById('modal-name').placeholder = '如：蓝色大结晶釉 205号';
-  pendingSaveIndex = glazeIndex;
-  document.getElementById('modal-name').value = glazes[glazeIndex].name;
-  document.getElementById('modal-note').value = '';
-  document.getElementById('modal').classList.add('open');
-  setTimeout(()=>document.getElementById('modal-name').focus(), 50);
-}
-
-function closeModal(e) {
-  if(!e || e.target===document.getElementById('modal')) {
-    document.getElementById('modal').classList.remove('open');
-  }
-}
-
-async function confirmSave() {
-  const type = document.getElementById('modal-type').value;
-  const note = document.getElementById('modal-note').value.trim();
-
-  let payload;
-  if(type === 'base') {
-    const name = document.getElementById('modal-name').value.trim() || '基础釉';
-    const baseDry = parseFloat(document.getElementById('base-dry').value)||0;
-    const baseWater = parseFloat(document.getElementById('base-water').value)||0;
-    payload = {
-      type: 'base', name, note,
-      base_ingredients: baseIngredients.map(i=>({...i})),
-      base_dry: baseDry,
-      base_water: baseWater,
-      additives: {},
-    };
-  } else {
-    const name = document.getElementById('modal-name').value.trim() || glazes[pendingSaveIndex].name;
-    const s = lastGlazeStates[pendingSaveIndex];
-    const g = glazes[pendingSaveIndex];
-    payload = {
-      type: 'additive', name, note,
-      glaze_name: g.name,
-      base_ingredients: baseIngredients.map(i=>({...i})),
-      additives: {...s.additiveTotals},
-      base_dry: s.baseDry,
-    };
-  }
-
-  const { data, error } = await sb.from('favourites').insert(payload).select().single();
-  if(error) { alert('收藏失败：'+error.message); return; }
-  favourites.unshift(rowToFavourite(data));
-
-  if(type !== 'base') {
-    const btns = document.querySelectorAll('.save-btn');
-    if(btns[pendingSaveIndex]) {
-      btns[pendingSaveIndex].textContent = '已收藏 ✓';
-      btns[pendingSaveIndex].classList.add('saved');
-    }
-  }
-
-  updateFavBadge();
-  document.getElementById('modal').classList.remove('open');
-}
-
-function updateFavBadge() {
-  const b = document.getElementById('fav-count-badge');
-  b.textContent = favourites.length > 0 ? `(${favourites.length})` : '';
-}
-
-// ── export / import ──
-function exportFavourites() {
-  if(favourites.length===0) { alert('收藏夹是空的，没有可导出的配方。'); return; }
-  const data = JSON.stringify(favourites, null, 2);
-  const blob = new Blob([data], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const date = new Date().toISOString().slice(0,10);
-  a.href = url;
-  a.download = `釉料配方收藏_${date}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function importFavourites(input) {
-  const file = input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = async e => {
-    try {
-      const imported = JSON.parse(e.target.result);
-      if(!Array.isArray(imported)) throw new Error('格式不对');
-      const existingLegacyIds = new Set(favourites.map(f=>f.legacyId).filter(Boolean));
-      const toImport = imported.filter(fav => !existingLegacyIds.has(fav.id));
-      let added = 0, photoCount = 0;
-      for (const fav of toImport) {
-        const isBase = fav.type === 'base' || (!fav.type && Object.keys(fav.additives||{}).length === 0);
-        const payload = {
-          legacy_id: fav.id, type: isBase ? 'base' : 'additive', name: fav.name, note: fav.note||'',
-          glaze_name: fav.glazeName || null,
-          base_ingredients: fav.baseIngredients||[], base_dry: fav.baseDry||0, base_water: fav.baseWater||0,
-          additives: fav.additives||{}, photos: [],
-        };
-        const { data, error } = await sb.from('favourites').insert(payload).select().single();
-        if(error) continue;
-        added++;
-        const newFav = rowToFavourite(data);
-        const photos = fav._photos || [];
-        if(photos.length) {
-          const entries = [];
-          for (let i = 0; i < photos.length; i += 4) {
-            const batch = photos.slice(i, i+4);
-            const uploaded = await Promise.all(batch.map(async p => {
-              const src = typeof p === 'string' ? p : p.src;
-              const caption = typeof p === 'string' ? '' : (p.caption||'');
-              const path = `${currentUserId}/favourites/${data.id}/${crypto.randomUUID()}.jpg`;
-              const { error: upErr } = await sb.storage.from(PHOTO_BUCKET).upload(path, _blobFromDataURL(src), {contentType:'image/jpeg'});
-              return upErr ? null : {path, caption};
-            }));
-            entries.push(...uploaded.filter(Boolean));
-          }
-          photoCount += entries.length;
-          newFav.photos = entries;
-          await resolvePhotoUrls([newFav]);
-          await savePhotosField('favourites', data.id, entries);
-        }
-        favourites.unshift(newFav);
-      }
-      updateFavBadge();
-      renderFavourites();
-      alert(added > 0 ? `成功导入 ${added} 条配方，共 ${photoCount} 张图片。` : '所有配方已存在，没有新增。');
-    } catch(err) {
-      alert('导入失败：文件格式不正确，请选择由本工具导出的 JSON 文件。');
-    }
-    input.value = '';
-  };
-  reader.readAsText(file);
-}
-
-// ── favourites panel ──
-function renderFavourites() {
-  const wrap = document.getElementById('fav-list');
-  const countEl = document.getElementById('fav-toolbar-count');
-  if(countEl) countEl.textContent = favourites.length > 0 ? `共 ${favourites.length} 条配方` : '';
-  if(favourites.length===0) {
-    wrap.innerHTML = `<div class="fav-empty"><div class="big">☆</div>还没有收藏的配方<br>计算出结果后，点击「收藏此配方」保存</div>`;
-    return;
-  }
-
-  wrap.innerHTML = favourites.map((fav,fi)=>{
-    const isBase = fav.type === 'base' || (!fav.type && Object.keys(fav.additives||{}).length === 0);
-    const typeLabel = isBase
-      ? `<span style="font-size:0.65rem;font-family:'DM Mono',monospace;padding:1px 7px;border-radius:3px;background:var(--bg2);color:var(--ink3);border:1px solid var(--line);margin-right:6px">基础釉</span>`
-      : `<span style="font-size:0.65rem;font-family:'DM Mono',monospace;padding:1px 7px;border-radius:3px;background:var(--fav-bg);color:var(--fav);border:1px solid var(--fav-line);margin-right:6px">添加剂</span>`;
-
-    const baseTags = fav.baseIngredients.map(i=>
-      `<span class="fav-tag">${i.name} ${i.parts}</span>`
-    ).join('');
-
-    let extraInfo = '';
-    if(isBase) {
-      const total = (fav.baseDry||0) + (fav.baseWater||0);
-      extraInfo = total > 0
-        ? `<div class="fav-summary" style="margin-top:6px">干料 ${fav.baseDry}g · 水 ${fav.baseWater}g · 共 ${total}g</div>`
-        : '';
-    } else {
-      const addEntries = Object.entries(fav.additives||{});
-      const addTags = addEntries.map(([name,amt])=>{
-        const pct = (amt/fav.baseDry*100).toFixed(3);
-        return `<span class="fav-tag" style="background:var(--fav-bg);color:var(--fav);border-color:var(--fav-line)">${name} +${pct}%</span>`;
-      }).join('');
-      extraInfo = addTags
-        ? `<div style="margin-top:6px">${addTags}</div>`
-        : `<div class="fav-summary" style="margin-top:6px">无添加剂</div>`;
-    }
-
-    return `
-      <div class="fav-card ${favBatchMode && favSelectedIds.has(fav.id) ? 'fav-card-selected' : ''}">
-        <div class="fav-card-head">
-          ${favBatchMode ? `<input type="checkbox" class="card-check" ${favSelectedIds.has(fav.id)?'checked':''} onchange="toggleFavSelect('${fav.id}', this.checked)">` : ''}
-          <div class="fav-name" style="flex:1;display:flex;align-items:center;gap:6px">
-            ${typeLabel}
-            <span id="name-display-${fi}" style="cursor:pointer" onclick="editName(${fi})" title="点击改名">${fav.name} <span style="font-size:0.65rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></span>
-            <span id="name-edit-${fi}" style="display:none;flex:1;display:none;align-items:center;gap:6px">
-              <input type="text" id="name-input-${fi}" value="${fav.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveName(${fi});if(event.key==='Escape')cancelName(${fi})">
-              <button class="fav-load-btn" onclick="saveName(${fi})">保存</button>
-              <button class="fav-del-btn" onclick="cancelName(${fi})">✕</button>
-            </span>
-          </div>
-          <div class="fav-date">${fav.savedAt}</div>
-          <div class="fav-actions">
-            <button class="fav-load-btn" onclick="loadFavourite(${fi})">载入</button>
-            <button class="fav-load-btn" style="background:var(--nb-bg);color:var(--nb);border-color:var(--nb-line)" onclick="importFavToNotebook(${fi})">存入配方本</button>
-            <button class="fav-del-btn" onclick="deleteFavourite(${fi})">删除</button>
-          </div>
-        </div>
-        <div class="fav-body">
-          <div class="fav-note-wrap" id="note-display-${fi}">
-            ${fav.note
-              ? `<div class="fav-note" style="cursor:pointer;white-space:pre-wrap" onclick="editNote(${fi})" title="点击编辑备注">${fav.note} <span style="font-size:0.65rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>`
-              : `<div style="font-size:0.75rem;color:var(--ink3);cursor:pointer;margin-bottom:8px;font-family:'DM Mono',monospace" onclick="editNote(${fi})">＋ 添加备注</div>`
-            }
-          </div>
-          <div class="fav-note-edit" id="note-edit-${fi}" style="display:none;margin-bottom:8px">
-            <textarea id="note-input-${fi}" style="width:100%;min-height:52px;font-size:0.78rem;margin-bottom:6px">${fav.note||''}</textarea>
-            <div style="display:flex;gap:6px">
-              <button class="fav-load-btn" style="flex:1" onclick="saveNote(${fi})">保存</button>
-              <button class="fav-del-btn" style="white-space:nowrap" onclick="insertBlankLine('note-input-${fi}')">↵ 空行</button>
-              <button class="fav-del-btn" onclick="cancelNote(${fi})">取消</button>
-            </div>
-          </div>
-          <div>${baseTags}</div>
-          ${extraInfo}
-          ${renderPhotoGallery(fav.photos||[], 'favourites', fav.id, 'fav', 'triggerFavPhoto', 'deleteFavPhoto')}
-        </div>
-      </div>
-    `;
-  }).join('');
-  updateFavBatchCount();
-}
-
-function toggleFavBatchMode() {
-  favBatchMode = !favBatchMode;
-  if(!favBatchMode) favSelectedIds.clear();
-  document.getElementById('fav-batch-bar').style.display = favBatchMode ? 'flex' : 'none';
-  document.getElementById('fav-batch-btn').textContent = favBatchMode ? '✕ 退出批量' : '☑ 批量删除';
-  renderFavourites();
-}
-function toggleFavSelect(id, checked) {
-  if(checked) favSelectedIds.add(id); else favSelectedIds.delete(id);
-  renderFavourites();
-}
-function favSelectAll() {
-  favourites.forEach(fav => favSelectedIds.add(fav.id));
-  renderFavourites();
-}
-function favSelectNone() {
-  favSelectedIds.clear();
-  renderFavourites();
-}
-function updateFavBatchCount() {
-  const el = document.getElementById('fav-batch-count-label');
-  if(el) el.textContent = `已选 ${favSelectedIds.size} 条`;
-}
-async function deleteFavBatch() {
-  if(favSelectedIds.size === 0) { alert('还没选择要删除的收藏'); return; }
-  if(!confirm(`确定删除选中的 ${favSelectedIds.size} 条收藏？此操作不可撤销。`)) return;
-  const ids = [...favSelectedIds];
-  for(const id of ids) {
-    const fav = favourites.find(f => f.id === id);
-    if(fav) await deleteAllPhotosForRecord('favourites', fav);
-  }
-  await sb.from('favourites').delete().in('id', ids);
-  favourites = favourites.filter(f => !favSelectedIds.has(f.id));
-  favSelectedIds.clear();
-  favBatchMode = false;
-  document.getElementById('fav-batch-bar').style.display = 'none';
-  document.getElementById('fav-batch-btn').textContent = '☑ 批量删除';
-  updateFavBadge();
-  renderFavourites();
-}
-
-async function importFavToNotebook(fi) {
-  const fav = favourites[fi];
-  const isBase = fav.type === 'base' || (!fav.type && Object.keys(fav.additives||{}).length === 0);
-
-  // Build notebook additives (pct) from fav additives (absolute amounts)
-  const nbAdditives = {};
-  if(!isBase && fav.baseDry > 0) {
-    Object.entries(fav.additives||{}).forEach(([name, amt]) => {
-      nbAdditives[name] = +(amt / fav.baseDry * 100).toFixed(4);
-    });
-  }
-
-  // Build glazes array
-  const glazesForNb = isBase ? [] : [{
-    stepId: crypto.randomUUID(),
-    name: fav.glazeName || fav.name,
-    sourceId: null, // = 本记录基釉，非缺失值
-    sourceAmount: fav.baseDry || 0,
-    amountUnknown: false,
-    additives: Object.entries(fav.additives||{}).map(([name, amount]) => ({ name, amount })),
-  }];
-
-  const payload = {
-    num: '',
-    name: fav.name,
-    note: fav.note || '',
-    base_ingredients: (fav.baseIngredients||[]).map(i=>({...i})),
-    base_dry: fav.baseDry || 0,
-    base_water: fav.baseWater || 0,
-    glazes: glazesForNb,
-    additives: nbAdditives,
-  };
-
-  const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
-  if(error) { alert('存入配方本失败：'+error.message); return; }
-  notebook.unshift(rowToNotebook(data));
-  updateNbBadge();
-  // Switch to notebook tab
-  const nbBtn = document.querySelectorAll('.tab-btn')[2];
-  switchTab('nb', nbBtn);
-  renderNotebook();
-}
-
-function editNote(fi) {
-  document.getElementById(`note-display-${fi}`).style.display = 'none';
-  document.getElementById(`note-edit-${fi}`).style.display = 'block';
-  document.getElementById(`note-input-${fi}`).focus();
-}
-
-function cancelNote(fi) {
-  document.getElementById(`note-display-${fi}`).style.display = 'block';
-  document.getElementById(`note-edit-${fi}`).style.display = 'none';
-}
-
-async function saveNote(fi) {
-  const newNote = document.getElementById(`note-input-${fi}`).value.trim();
-  favourites[fi].note = newNote;
-  await sb.from('favourites').update({note:newNote}).eq('id', favourites[fi].id);
-  renderFavourites();
-}
-
-function editName(fi) {
-  document.getElementById(`name-display-${fi}`).style.display = 'none';
-  const editEl = document.getElementById(`name-edit-${fi}`);
-  editEl.style.display = 'flex';
-  document.getElementById(`name-input-${fi}`).focus();
-}
-
-function cancelName(fi) {
-  document.getElementById(`name-display-${fi}`).style.display = 'inline';
-  document.getElementById(`name-edit-${fi}`).style.display = 'none';
-}
-
-async function saveName(fi) {
-  const newName = document.getElementById(`name-input-${fi}`).value.trim();
-  if(!newName) return;
-  favourites[fi].name = newName;
-  await sb.from('favourites').update({name:newName}).eq('id', favourites[fi].id);
-  renderFavourites();
-}
-
-async function deleteFavourite(fi) {
-  if(!confirm(`删除「${favourites[fi].name}」？`)) return;
-  const fav = favourites[fi];
-  await deleteAllPhotosForRecord('favourites', fav);
-  await sb.from('favourites').delete().eq('id', fav.id);
-  favourites.splice(fi,1);
-  updateFavBadge();
-  renderFavourites();
-}
-
-function loadFavourite(fi) {
-  const fav = favourites[fi];
-  baseIngredients = fav.baseIngredients.map(i=>({...i}));
-  renderBase();
-  if(fav.type === 'base') {
-    if(fav.baseDry) document.getElementById('base-dry').value = fav.baseDry;
-    if(fav.baseWater) document.getElementById('base-water').value = fav.baseWater;
-    switchTab('calc', document.querySelectorAll('.tab-btn')[0]);
-  } else {
-    switchTab('calc', document.querySelectorAll('.tab-btn')[0]);
-    alert(`基础原料已载入。\n添加剂比例请参考收藏夹卡片手动添加步骤。`);
-  }
 }
 
 </script>

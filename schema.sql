@@ -97,6 +97,7 @@ alter table public.notebook_entries add column if not exists peak_temp_override 
 alter table public.notebook_entries add column if not exists data_confidence text not null default '可靠'
   check (data_confidence in ('可靠','估算','污染','无法计算'));
 alter table public.notebook_entries add column if not exists effect_tags jsonb not null default '[]'::jsonb; -- ['亮光','哑光','结晶','开裂','流动',...]
+alter table public.notebook_entries add column if not exists starred boolean not null default false; -- 用户偏爱的效果，"我的好釉"筛选用
 
 -- ── RLS：每个人只能读写自己的行 ──
 alter table public.notebook_entries enable row level security;
