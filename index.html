@@ -4,31 +4,83 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>釉料配方计算器</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
+  /* 标本目录 — 色彩沉默：釉色照片是唯一色彩来源，--accent 只用于星标/note/当前记录高亮/效果标签 */
   :root {
-    --bg: #f5f1eb;
-    --bg2: #ede8e0;
-    --bg3: #e4ddd3;
-    --ink: #2a2420;
-    --ink2: #6b5f57;
-    --ink3: #9c8e85;
-    --accent: #7a5c3a;
-    --accent2: #a07850;
-    --line: #d4ccc4;
-    --success: #4a6741;
-    --danger: #7a3a2e;
-    --card: #faf7f3;
-    --fav: #5a3e6e;
-    --fav-bg: #f0ebf6;
-    --fav-line: #d4c8e4;
-    --nb: #3a5c4a;
-    --nb-bg: #edf3ef;
-    --nb-line: #c4d9cc;
+    --paper:        #EDE9E1;
+    --paper-raised: #F4F1EA;
+    --paper-sunk:   #E3DCCF;
+    --line:         #C4BCAE;
+
+    --ink:          #332E27;
+    --ink-2:        #4A443B;
+    --ink-3:        #8A7F6E;
+    --ink-4:        #A39684;
+
+    --accent:       #B5744A;
+
+    --font-mono: ui-monospace, "SF Mono", Menlo, "Noto Sans Mono CJK SC", monospace;
+    --font-serif: "Songti SC", "Source Han Serif SC", ui-serif, serif;
+    --font-sans: -apple-system, "PingFang SC", "Source Han Sans SC", sans-serif;
+
+    /* legacy aliases — old variable names kept so existing rules below
+       resolve through the new palette without a full rename pass */
+    --bg: var(--paper);
+    --bg2: var(--paper-sunk);
+    --bg3: var(--paper-sunk);
+    --card: var(--paper-raised);
+    --ink2: var(--ink-2);
+    --ink3: var(--ink-3);
+    --nb: var(--ink);
+    --nb-bg: var(--paper-sunk);
+    --nb-line: var(--line);
+    --fav: var(--ink);
+    --fav-bg: var(--paper-sunk);
+    --fav-line: var(--line);
+    --danger: var(--ink);
+    --success: var(--ink-3);
+    --accent2: var(--ink-3);
   }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:        #211E1A;
+      --paper-raised: #2A2620;
+      --paper-sunk:   #34302A;
+      --line:         #4A443B;
+      --ink:          #EDE9E1;
+      --ink-2:        #C7C0B3;
+      --ink-3:        #8F8578;
+      --ink-4:        #6E6558;
+      --accent:       #D89A6B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:        #211E1A;
+    --paper-raised: #2A2620;
+    --paper-sunk:   #34302A;
+    --line:         #4A443B;
+    --ink:          #EDE9E1;
+    --ink-2:        #C7C0B3;
+    --ink-3:        #8F8578;
+    --ink-4:        #6E6558;
+    --accent:       #D89A6B;
+  }
+  :root[data-theme="light"] {
+    --paper:        #EDE9E1;
+    --paper-raised: #F4F1EA;
+    --paper-sunk:   #E3DCCF;
+    --line:         #C4BCAE;
+    --ink:          #332E27;
+    --ink-2:        #4A443B;
+    --ink-3:        #8A7F6E;
+    --ink-4:        #A39684;
+    --accent:       #B5744A;
+  }
+
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Noto Serif SC', serif; background: var(--bg); color: var(--ink); min-height: 100vh; }
+  body { font-family: var(--font-serif); background: var(--bg); color: var(--ink); min-height: 100vh; font-variant-numeric: tabular-nums; }
 
   header {
     background: var(--ink);
@@ -47,13 +99,13 @@
     color: var(--bg); pointer-events: none; user-select: none;
   }
   header h1 { font-size: 1.4rem; font-weight: 400; letter-spacing: 0.12em; }
-  header p { font-size: 0.75rem; opacity: 0.5; font-family: 'DM Mono', monospace; letter-spacing: 0.05em; }
+  header p { font-size: 0.75rem; opacity: 0.5; font-family: var(--font-mono); letter-spacing: 0.05em; }
 
   /* tabs */
   .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--card); }
   .tab-btn {
     padding: 10px 22px;
-    font-family: 'Noto Serif SC', serif;
+    font-family: var(--font-serif);
     font-size: 0.8rem;
     letter-spacing: 0.06em;
     border: none;
@@ -65,7 +117,7 @@
   }
   .tab-btn.active { color: var(--ink); border-bottom-color: var(--ink); }
   .tab-btn:hover { color: var(--ink2); }
-  .tab-hist.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-hist.active { color: var(--ink); border-bottom-color: var(--ink); }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
@@ -84,7 +136,7 @@
   .panel-right { background: var(--bg); padding: 2rem; overflow-y: auto; }
 
   .section-label {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
@@ -105,14 +157,14 @@
     border: 1px solid var(--line);
     border-radius: 4px;
     padding: 6px 10px;
-    font-family: 'Noto Serif SC', serif;
+    font-family: var(--font-serif);
     font-size: 0.82rem;
     color: var(--ink);
     outline: none;
     transition: border-color 0.15s;
   }
-  input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { border-color: var(--accent2); }
-  input[type=number] { font-family: 'DM Mono', monospace; }
+  input[type=text]:focus, input[type=number]:focus, select:focus, textarea:focus { border-color: var(--ink-3); }
+  input[type=number] { font-family: var(--font-mono); }
   textarea { resize: vertical; min-height: 56px; font-size: 0.78rem; line-height: 1.5; }
 
   .btn-icon {
@@ -129,11 +181,11 @@
     width: 100%; padding: 7px;
     background: none; border: 1px dashed var(--line); border-radius: 4px;
     color: var(--ink3);
-    font-family: 'Noto Serif SC', serif; font-size: 0.78rem;
+    font-family: var(--font-serif); font-size: 0.78rem;
     cursor: pointer; margin-top: 4px;
     transition: all 0.12s; letter-spacing: 0.04em;
   }
-  .btn-ghost:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent2); }
+  .btn-ghost:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink-3); }
 
   .water-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 1rem; }
   .field-label { font-size: 0.72rem; color: var(--ink3); margin-bottom: 4px; letter-spacing: 0.04em; }
@@ -147,24 +199,24 @@
     display: flex; align-items: center; gap: 10px;
     border-bottom: 1px solid var(--line);
   }
-  .glaze-num { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--ink3); min-width: 20px; }
+  .glaze-num { font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink3); min-width: 20px; }
   .glaze-card-body { padding: 12px 14px; }
   .source-row { display: grid; grid-template-columns: 1fr 90px; gap: 6px; margin-bottom: 10px; }
   .additive-row { display: grid; grid-template-columns: 1fr 80px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
   .source-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
   .source-unit-hint {
-    font-family: 'DM Mono', monospace; font-size: 0.62rem;
+    font-family: var(--font-mono); font-size: 0.62rem;
     color: var(--ink3); letter-spacing: 0.04em; margin-top: 3px;
   }
   .unknown-toggle {
     display: flex; align-items: center; gap: 5px; margin-top: 4px;
     font-size: 0.72rem; color: var(--ink3); cursor: pointer;
-    font-family: 'DM Mono', monospace; user-select: none;
+    font-family: var(--font-mono); user-select: none;
     letter-spacing: 0.03em;
   }
-  .unknown-toggle input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
+  .unknown-toggle input[type=checkbox] { accent-color: var(--ink-3); cursor: pointer; }
   .amount-unknown-badge {
-    display: inline-block; font-family: 'DM Mono', monospace;
+    display: inline-block; font-family: var(--font-mono);
     font-size: 0.72rem; padding: 4px 10px; border-radius: 4px;
     background: var(--bg2); border: 1px dashed var(--line);
     color: var(--ink3); letter-spacing: 0.06em; width: 100%;
@@ -175,11 +227,11 @@
     width: 100%; padding: 12px;
     background: var(--ink); color: var(--bg);
     border: none; border-radius: 6px;
-    font-family: 'Noto Serif SC', serif; font-size: 0.9rem;
+    font-family: var(--font-serif); font-size: 0.9rem;
     letter-spacing: 0.1em; cursor: pointer; margin-top: 1.5rem;
     transition: background 0.15s;
   }
-  .calc-btn:hover { background: var(--accent); }
+  .calc-btn:hover { background: var(--ink-2); }
 
   /* results */
   .result-block {
@@ -194,21 +246,21 @@
   }
   .result-head-left { display: flex; align-items: baseline; gap: 10px; }
   .result-head strong { font-size: 0.95rem; font-weight: 400; letter-spacing: 0.06em; }
-  .result-head span { font-family: 'DM Mono', monospace; font-size: 0.7rem; opacity: 0.55; }
+  .result-head span { font-family: var(--font-mono); font-size: 0.7rem; opacity: 0.55; }
 
   .save-btn {
-    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 10px; border-radius: 3px;
     background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8);
     border: 1px solid rgba(255,255,255,0.2); cursor: pointer;
     letter-spacing: 0.04em; transition: all 0.12s; white-space: nowrap;
   }
   .save-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
-  .save-btn.saved { background: rgba(180,210,170,0.25); color: #a8d4a0; border-color: rgba(168,212,160,0.4); }
+  .save-btn.saved { background: rgba(255,255,255,0.3); color: #fff; border-color: rgba(255,255,255,0.45); }
 
   table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
   th {
-    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    font-family: var(--font-mono); font-size: 0.65rem;
     letter-spacing: 0.08em; color: var(--ink3);
     text-align: left; padding: 8px 16px;
     background: var(--bg2); font-weight: 400;
@@ -219,17 +271,17 @@
     padding: 7px 16px; border-bottom: 1px solid var(--line);
     color: var(--ink); font-variant-numeric: tabular-nums;
   }
-  td:not(:first-child) { text-align: right; font-family: 'DM Mono', monospace; font-size: 0.78rem; }
+  td:not(:first-child) { text-align: right; font-family: var(--font-mono); font-size: 0.78rem; }
   tr:last-child td { border-bottom: none; font-weight: 500; background: var(--bg2); }
 
   .tag-add {
     display: inline-block; font-size: 0.62rem;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     padding: 1px 6px; border-radius: 3px;
-    background: #e8f0e6; color: var(--success);
+    background: var(--bg2); color: var(--ink-3);
     margin-left: 6px; letter-spacing: 0.04em; vertical-align: middle;
   }
-  .pct-highlight { color: var(--accent); font-weight: 500; }
+  .pct-highlight { color: var(--ink); font-weight: 600; }
 
   .empty-result {
     text-align: center; padding: 4rem 2rem;
@@ -237,9 +289,9 @@
   }
   .empty-result .big { font-size: 3rem; opacity: 0.15; line-height: 1; margin-bottom: 1rem; }
   .error-msg {
-    background: #fdf0ee; border: 1px solid #e8c4be;
+    background: var(--bg2); border: 1px solid var(--line); border-left: 3px solid var(--ink);
     border-radius: 6px; padding: 10px 16px;
-    color: var(--danger); font-size: 0.82rem; margin-bottom: 12px;
+    color: var(--ink); font-size: 0.82rem; margin-bottom: 12px;
   }
   .divider { border: none; border-top: 1px solid var(--line); margin: 1.2rem 0; }
 
@@ -250,7 +302,7 @@
   }
   .fav-toolbar-right { margin-left: auto; display: flex; gap: 8px; }
   .io-btn {
-    font-size: 0.75rem; font-family: 'DM Mono', monospace;
+    font-size: 0.75rem; font-family: var(--font-mono);
     padding: 6px 14px; border-radius: 4px; cursor: pointer;
     letter-spacing: 0.04em; transition: all 0.12s;
     border: 1px solid var(--line);
@@ -259,7 +311,7 @@
   .io-btn-export:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink3); }
   .io-btn-import { background: var(--card); color: var(--fav); border-color: var(--fav-line); }
   .io-btn-import:hover { background: var(--fav-bg); border-color: var(--fav); }
-  .import-hint { font-size: 0.72rem; color: var(--ink3); font-family: 'DM Mono', monospace; }
+  .import-hint { font-size: 0.72rem; color: var(--ink3); font-family: var(--font-mono); }
   .batch-bar {
     display: flex; gap: 8px; align-items: center;
     margin: -0.8rem 0 1.4rem; padding: 8px 12px;
@@ -286,10 +338,10 @@
     flex: 1; font-size: 0.9rem; font-weight: 500;
     color: var(--fav); letter-spacing: 0.04em;
   }
-  .fav-date { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink3); }
+  .fav-date { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); }
   .fav-actions { display: flex; gap: 6px; }
   .fav-load-btn {
-    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 10px; border-radius: 3px;
     background: var(--fav-bg); color: var(--fav);
     border: 1px solid var(--fav-line); cursor: pointer;
@@ -297,23 +349,23 @@
   }
   .fav-load-btn:hover { background: var(--fav); color: #fff; }
   .fav-del-btn {
-    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 8px; border-radius: 3px;
     background: none; color: var(--ink3);
     border: 1px solid var(--line); cursor: pointer;
     transition: all 0.12s;
   }
-  .fav-del-btn:hover { background: #fdf0ee; color: var(--danger); border-color: var(--danger); }
+  .fav-del-btn:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink); }
 
   .fav-body { padding: 12px 16px; }
   .fav-tag {
     display: inline-block; font-size: 0.65rem;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
     padding: 1px 7px; border-radius: 3px; margin: 2px 3px 2px 0;
     background: var(--bg2); color: var(--ink2);
     border: 1px solid var(--line);
   }
-  .fav-count { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink3); }
+  .fav-count { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); }
 
 
   /* ── notebook ── */
@@ -321,7 +373,7 @@
   .nb-toolbar { display: flex; gap: 8px; margin-bottom: 1.4rem; align-items: center; }
   .nb-toolbar-right { margin-left: auto; display: flex; gap: 8px; }
   .nb-new-btn {
-    font-size: 0.8rem; font-family: 'Noto Serif SC', serif;
+    font-size: 0.8rem; font-family: var(--font-serif);
     padding: 7px 18px; border-radius: 5px; cursor: pointer;
     background: var(--nb); color: #fff; border: none;
     letter-spacing: 0.06em; transition: opacity 0.12s;
@@ -339,18 +391,17 @@
     padding: 10px 16px; display: flex; align-items: center; gap: 10px;
   }
   .nb-num {
-    font-family: 'DM Mono', monospace; font-size: 0.72rem;
-    color: #fff; background: var(--nb);
-    padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 0.7rem;
+    color: var(--ink-3); white-space: nowrap;
   }
   .nb-name {
-    flex: 1; font-size: 0.9rem; font-weight: 500;
-    color: var(--nb); letter-spacing: 0.04em;
+    flex: 1; font-family: var(--font-serif); font-size: 1.05rem; font-weight: 500;
+    color: var(--ink); letter-spacing: 0.02em;
   }
-  .nb-date { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--ink3); }
+  .nb-date { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); }
   .nb-actions { display: flex; gap: 6px; }
   .nb-load-btn {
-    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 10px; border-radius: 3px;
     background: var(--nb-bg); color: var(--nb);
     border: 1px solid var(--nb-line); cursor: pointer;
@@ -358,34 +409,34 @@
   }
   .nb-load-btn:hover { background: var(--nb); color: #fff; }
   .nb-del-btn {
-    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 8px; border-radius: 3px;
     background: none; color: var(--ink3);
     border: 1px solid var(--line); cursor: pointer; transition: all 0.12s;
   }
-  .nb-del-btn:hover { background: #fdf0ee; color: var(--danger); border-color: var(--danger); }
+  .nb-del-btn:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink); }
   .nb-star-btn {
     font-size: 0.95rem; line-height: 1; background: none; border: none; cursor: pointer;
     color: var(--ink3); padding: 2px; transition: all 0.12s;
   }
-  .nb-star-btn:hover { color: var(--accent2); }
-  .nb-star-btn-on { color: var(--accent2); }
-  #nb-star-filter-btn.nb-star-filter-active { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+  .nb-star-btn:hover { color: var(--accent); }
+  .nb-star-btn-on { color: var(--accent); }
+  #nb-star-filter-btn.nb-star-filter-active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .nb-body { padding: 14px 16px; }
   .nb-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
   .nb-ingredient-tag {
-    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    font-family: var(--font-mono); font-size: 0.7rem;
     padding: 3px 9px; border-radius: 3px;
     background: var(--bg2); color: var(--ink2); border: 1px solid var(--line);
   }
   .nb-additive-tag {
-    font-family: 'DM Mono', monospace; font-size: 0.7rem;
+    font-family: var(--font-mono); font-size: 0.7rem;
     padding: 3px 9px; border-radius: 3px;
     background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line);
   }
   .nb-effect-tag {
-    display: inline-block; font-family: 'Noto Serif SC', serif;
-    background: transparent; border: 1px solid #B5744A; color: #B5744A;
+    display: inline-block; font-family: var(--font-serif);
+    background: transparent; border: 1px solid var(--accent); color: var(--accent);
     border-radius: 999px; padding: 2px 11px;
     font-size: 0.85em; letter-spacing: 0.05em;
   }
@@ -397,7 +448,7 @@
   }
   .chem-panel {
     margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--nb-line);
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-mono);
   }
   .chem-summary {
     font-size: 0.72rem; color: var(--ink2); cursor: pointer; letter-spacing: 0.02em;
@@ -406,18 +457,18 @@
   .chem-cols { display: flex; gap: 18px; flex-wrap: wrap; }
   .chem-col { min-width: 90px; }
   .chem-col-title {
-    font-size: 0.65rem; color: var(--ink3); letter-spacing: 0.08em;
+    font-family: var(--font-mono); font-size: 0.65rem; color: var(--ink3); letter-spacing: 0.08em;
     text-transform: uppercase; margin-bottom: 4px;
   }
   .chem-oxide-row {
     display: flex; justify-content: space-between; gap: 12px;
-    font-size: 0.75rem; color: var(--ink); padding: 1px 0;
+    font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink); padding: 1px 0;
   }
   .chem-ratio {
-    font-size: 0.75rem; color: var(--ink); margin-top: 8px;
+    font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink); margin-top: 8px;
   }
   .chem-note {
-    display: block; font-size: 0.68rem; color: var(--ink3); font-style: italic; margin-top: 2px;
+    display: block; font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); font-style: italic; margin-top: 2px;
   }
   .chem-warning {
     font-size: 0.72rem; color: var(--danger); line-height: 1.6;
@@ -433,11 +484,11 @@
   .mat-note { font-size: 0.7rem; color: var(--ink3); font-style: italic; }
   .nb-add-note {
     font-size: 0.75rem; color: var(--ink3); cursor: pointer;
-    font-family: 'DM Mono', monospace; margin-top: 8px;
+    font-family: var(--font-mono); margin-top: 8px;
     padding-top: 8px; border-top: 1px solid var(--nb-line);
   }
   .nb-section-label {
-    font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    font-family: var(--font-mono); font-size: 0.65rem;
     color: var(--ink3); letter-spacing: 0.1em; text-transform: uppercase;
     margin-bottom: 6px;
   }
@@ -447,33 +498,33 @@
   }
   .nb-empty .big { font-size: 3rem; opacity: 0.12; margin-bottom: 1rem; }
 
-  .glaze-tree { margin-bottom: 10px; }
-  .glaze-tree ul { list-style: none; margin: 0; padding-left: 16px; }
+  /* 衍生树：缩进 + 左侧细线，像目录、像家谱 —— 不用盒子和箭头 */
+  .glaze-tree { margin-bottom: 10px; font-size: 0.78rem; }
+  .glaze-tree ul { list-style: none; margin: 0; padding-left: 18px; }
   .glaze-tree > ul { padding-left: 0; }
-  .glaze-tree li { position: relative; margin: 5px 0; }
-  .glaze-tree li ul { border-left: 1px dashed var(--nb-line); margin-left: 7px; padding-top: 5px; }
+  .glaze-tree li { position: relative; margin: 4px 0; }
+  .glaze-tree li ul { border-left: 0.5px solid var(--line); margin-left: 6px; padding-top: 4px; }
   .glaze-tree-node {
     display: inline-flex; align-items: center; gap: 6px;
-    font-family: 'DM Mono', monospace; font-size: 0.7rem;
-    padding: 3px 9px; border-radius: 3px;
-    background: var(--bg2); color: var(--ink2); border: 1px solid var(--line);
-    cursor: pointer; transition: all 0.12s;
+    font-family: var(--font-mono); font-size: 0.72rem;
+    color: var(--ink-2);
+    cursor: pointer; transition: color 0.12s;
   }
-  .glaze-tree-node:hover { background: var(--nb-bg); color: var(--nb); border-color: var(--nb-line); }
-  .glaze-tree-root { background: var(--nb-bg); color: var(--nb); border-color: var(--nb-line); cursor: default; }
-  .glaze-tree-root:hover { background: var(--nb-bg); color: var(--nb); }
-  .glaze-tree-amount { color: var(--ink3); font-size: 0.64rem; }
+  .glaze-tree-node:hover { color: var(--ink); }
+  .glaze-tree-root { color: var(--ink); font-weight: 600; cursor: default; }
+  .glaze-tree-root:hover { color: var(--ink); }
+  .glaze-tree-amount { color: var(--ink-3); font-size: 0.66rem; }
   .glaze-tree-issue, .glaze-tree-issue:hover {
-    border-color: var(--danger); color: var(--danger); cursor: default; background: var(--bg2);
+    color: var(--ink-3); cursor: default; text-decoration: underline dotted var(--line);
   }
   .glaze-tree-missing, .glaze-tree-missing:hover {
-    border-color: var(--accent2); color: var(--accent2); cursor: default; background: var(--bg2); opacity: 0.8;
+    color: var(--ink-4); cursor: default; font-style: italic;
   }
   .glaze-tree-active, .glaze-tree-active:hover {
-    border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600;
+    color: var(--accent); font-weight: 600;
   }
   .glaze-tree-note {
-    display: block; font-size: 0.64rem; color: var(--ink3); font-style: italic;
+    display: block; font-size: 0.66rem; color: var(--accent); font-style: italic;
     margin: 2px 0 0 4px;
   }
   @keyframes nbCardFlash {
@@ -499,7 +550,7 @@
   .nbmodal .field-label { margin-top: 10px; margin-bottom: 4px; font-size: 0.72rem; color: var(--ink3); }
   .nbmodal-row { display: grid; grid-template-columns: 100px 1fr; gap: 8px; margin-bottom: 8px; }
   .nbmodal-btns { display: flex; gap: 8px; margin-top: 1.4rem; }
-  .nbmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: 'Noto Serif SC', serif; font-size: 0.82rem; letter-spacing: 0.04em; }
+  .nbmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-serif); font-size: 0.82rem; letter-spacing: 0.04em; }
   .nbmodal-confirm { background: var(--nb); color: #fff; border: none; }
   .nbmodal-confirm:hover { opacity: 0.85; }
   .nbmodal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
@@ -521,7 +572,7 @@
     animation: fadeIn 0.18s ease; max-height: 90vh; overflow-y: auto;
   }
   .updmodal h3 { font-size: 0.95rem; font-weight: 400; letter-spacing: 0.06em; margin-bottom: 0.3rem; color: var(--nb); }
-  .updmodal-hint { font-size: 0.72rem; color: var(--ink3); margin-bottom: 1rem; font-family: 'DM Mono', monospace; }
+  .updmodal-hint { font-size: 0.72rem; color: var(--ink3); margin-bottom: 1rem; font-family: var(--font-mono); }
   .updmodal-pair {
     display: grid; grid-template-columns: auto 1fr auto 1fr;
     align-items: center; gap: 8px;
@@ -535,7 +586,7 @@
   .updmodal-glaze-name { font-size: 0.84rem; font-weight: 500; }
   .updmodal-arrow { color: var(--ink3); font-size: 0.8rem; text-align: center; }
   .updmodal-nb-select {
-    font-family: 'Noto Serif SC', serif; font-size: 0.78rem;
+    font-family: var(--font-serif); font-size: 0.78rem;
     padding: 4px 6px; border-radius: 4px;
     border: 1px solid var(--line); background: var(--bg);
     color: var(--ink); width: 100%; outline: none;
@@ -544,7 +595,7 @@
   .updmodal-nb-select:focus { border-color: var(--nb); }
   .updmodal-nb-select:disabled { opacity: 0.35; cursor: default; }
   .updmodal-btns { display: flex; gap: 8px; }
-  .updmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: 'Noto Serif SC', serif; font-size: 0.82rem; letter-spacing: 0.04em; }
+  .updmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-serif); font-size: 0.82rem; letter-spacing: 0.04em; }
   .updmodal-confirm { background: var(--nb); color: #fff; border: none; }
   .updmodal-confirm:hover { opacity: 0.85; }
   .updmodal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
@@ -566,9 +617,9 @@
   .modal h3 { font-size: 1rem; font-weight: 400; letter-spacing: 0.06em; margin-bottom: 1rem; }
   .modal .field-label { margin-top: 12px; margin-bottom: 4px; }
   .modal-btns { display: flex; gap: 8px; margin-top: 1.2rem; }
-  .modal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: 'Noto Serif SC', serif; font-size: 0.82rem; letter-spacing: 0.04em; }
+  .modal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-serif); font-size: 0.82rem; letter-spacing: 0.04em; }
   .modal-confirm { background: var(--ink); color: var(--bg); border: none; }
-  .modal-confirm:hover { background: var(--accent); }
+  .modal-confirm:hover { background: var(--ink-2); }
   .modal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
   .modal-cancel:hover { background: var(--bg2); }
 
@@ -612,13 +663,13 @@
   }
   .photo-thumb-wrap:hover .photo-del-btn { opacity: 1; }
   .photo-caption-input {
-    width: 84px; font-size: 0.65rem; font-family: 'DM Mono', monospace;
+    width: 84px; font-size: 0.65rem; font-family: var(--font-mono);
     padding: 2px 5px; border-radius: 3px;
     background: var(--bg); border: 1px solid var(--line);
     color: var(--ink2); outline: none;
     transition: border-color 0.12s;
   }
-  .photo-caption-input:focus { border-color: var(--accent2); }
+  .photo-caption-input:focus { border-color: var(--ink-3); }
   .photo-caption-input::placeholder { color: var(--ink3); opacity: 0.7; }
 
   .photo-add-btn {
@@ -629,14 +680,14 @@
     display: flex; align-items: center; justify-content: center;
     transition: all 0.12s;
   }
-  .photo-add-btn:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent2); }
+  .photo-add-btn:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink-3); }
   .photo-add-btn.nb { border-color: var(--nb-line); color: var(--nb); }
   .photo-add-btn.nb:hover { background: var(--nb-bg); border-color: var(--nb); }
   .photo-add-btn.fav { border-color: var(--fav-line); color: var(--fav); }
   .photo-add-btn.fav:hover { background: var(--fav-bg); border-color: var(--fav); }
   .photo-add-btn.drag-over {
     background: var(--bg2); border-style: solid;
-    border-color: var(--accent2); color: var(--accent);
+    border-color: var(--ink); color: var(--ink);
     transform: scale(1.04); transition: all 0.1s;
   }
 
@@ -680,11 +731,11 @@
   }
   .lightbox-caption {
     color: rgba(255,255,255,0.9); font-size: 0.9rem;
-    font-family: 'Noto Serif SC', serif; letter-spacing: 0.04em;
+    font-family: var(--font-serif); letter-spacing: 0.04em;
     min-height: 1.4em;
   }
   .lightbox-counter {
-    color: rgba(255,255,255,0.4); font-family: 'DM Mono', monospace;
+    color: rgba(255,255,255,0.4); font-family: var(--font-mono);
     font-size: 0.7rem; margin-top: 4px; letter-spacing: 0.08em;
   }
   .lightbox-dots {
@@ -710,7 +761,7 @@
     <h1>釉料配方计算器</h1>
     <p>glaze recipe calculator · additive tracking</p>
   </div>
-  <div id="auth-status-bar" style="font-family:'DM Mono',monospace;font-size:0.72rem;display:flex;align-items:center;gap:10px;opacity:0.75;position:relative;z-index:1">
+  <div id="auth-status-bar" style="font-family:var(--font-mono);font-size:0.72rem;display:flex;align-items:center;gap:10px;opacity:0.75;position:relative;z-index:1">
     <span id="user-email"></span>
     <button id="signout-btn" onclick="signOut()" style="display:none;background:none;border:1px solid rgba(245,241,235,0.3);color:inherit;border-radius:4px;padding:3px 10px;cursor:pointer;font-family:inherit;font-size:inherit">退出登录</button>
   </div>
@@ -775,7 +826,7 @@
     <div class="fav-toolbar">
       <span class="import-hint" id="hist-toolbar-count"></span>
       <div class="fav-toolbar-right">
-        <button class="io-btn io-btn-export" onclick="clearHistory()" style="color:var(--danger);border-color:#e8c4be">清空历史</button>
+        <button class="io-btn io-btn-export" onclick="clearHistory()" style="color:var(--ink);border-color:var(--line)">清空历史</button>
       </div>
     </div>
     <div id="hist-list"></div>
@@ -801,7 +852,7 @@
       <button class="io-btn io-btn-export" onclick="nbSelectNone()">取消全选</button>
       <span class="import-hint" id="nb-batch-count-label">已选 0 条</span>
       <div class="nb-toolbar-right">
-        <button class="io-btn" style="color:var(--danger);border-color:#e8c4be" onclick="deleteNbBatch()">删除选中</button>
+        <button class="io-btn" style="color:var(--ink);border-color:var(--line)" onclick="deleteNbBatch()">删除选中</button>
         <button class="io-btn io-btn-export" onclick="toggleNbBatchMode()">取消</button>
       </div>
     </div>
@@ -1558,7 +1609,7 @@ function renderMaterials() {
       </div>
       <div class="mat-row">
         <label style="font-size:0.7rem;color:var(--ink3)">氧化物(重量% 格式 SiO2:60.08, ...)</label>
-        <input type="text" value="${oxideStr}" style="flex:1;font-family:'DM Mono',monospace;font-size:0.75rem"
+        <input type="text" value="${oxideStr}" style="flex:1;font-family:var(--font-mono);font-size:0.75rem"
           onchange="updateMaterialField('${m.id}','oxides', parseOxideInput(this.value))">
         <label style="font-size:0.7rem;color:var(--ink3)">LOI%</label>
         <input type="number" step="0.1" value="${m.loi}" style="width:70px" onchange="updateMaterialField('${m.id}','loi',parseFloat(this.value)||0)">
@@ -1819,7 +1870,7 @@ function openNbModal(glazeIndex, glazeState) {
   // base ingredients display (read-only labels)
   const baseWrap = document.getElementById('nb-modal-base-wrap');
   baseWrap.innerHTML = baseIngredients.map(i =>
-    `<span style="font-family:'DM Mono',monospace;font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
   ).join('');
 
   // additives from glaze state
@@ -1850,7 +1901,7 @@ function openNbModalEdit(ni) {
 
   const baseWrap = document.getElementById('nb-modal-base-wrap');
   baseWrap.innerHTML = (rec.baseIngredients||[]).map(i =>
-    `<span style="font-family:'DM Mono',monospace;font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
   ).join('');
 
   nbModalAdditives = Object.entries(rec.additives||{}).map(([name,pct])=>({name,pct}));
@@ -1962,7 +2013,7 @@ async function confirmNbSave() {
   // flash nb save btn if from result
   document.querySelectorAll('.nb-save-btn').forEach(b=>{
     if(b.dataset.done) return;
-    b.textContent='已存入 ✓'; b.style.background='rgba(180,210,170,0.25)';
+    b.textContent='已存入 ✓'; b.style.background='rgba(255,255,255,0.3)';
     b.dataset.done=1;
   });
 }
@@ -2140,7 +2191,7 @@ function nbCardHtml(rec, ni, idPrefix) {
         ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
         <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
         ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
-        <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>
+        <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
         <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
           <input type="text" id="${idPrefix}name-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
           <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
@@ -2163,7 +2214,7 @@ function nbCardHtml(rec, ni, idPrefix) {
         ${renderGlazeTree(rec)}
         <div id="${idPrefix}note-display-${ni}" onclick="editNbNote(${ni},'${idPrefix}')" style="cursor:pointer">
           ${rec.note
-            ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:'DM Mono',monospace">✎</span></div>`
+            ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>`
             : `<div class="nb-add-note">＋ 添加备注</div>`}
         </div>
         <div id="${idPrefix}note-edit-${ni}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--nb-line)">
@@ -2608,7 +2659,7 @@ function calculate() {
             </div>
             <button class="nb-save-btn save-btn" style="margin-right:4px" onclick="openNbModal(${i}, null)">存入配方本</button>
           </div>
-          <div style="padding:14px 16px;font-size:0.82rem;color:var(--ink3);font-family:'DM Mono',monospace">
+          <div style="padding:14px 16px;font-size:0.82rem;color:var(--ink3);font-family:var(--font-mono)">
             <span style="background:var(--bg2);border:1px dashed var(--line);padding:3px 10px;border-radius:4px;margin-right:8px">？ 取用量未填写</span>
             添加剂：${additivesStr}
           </div>
@@ -2922,7 +2973,7 @@ function openBaseNbModal() {
 
   const baseWrap = document.getElementById('nb-modal-base-wrap');
   baseWrap.innerHTML = baseIngredients.map(i =>
-    `<span style="font-family:'DM Mono',monospace;font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
   ).join('');
 
   nbModalAdditives = [];
