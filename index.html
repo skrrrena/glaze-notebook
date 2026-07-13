@@ -459,6 +459,9 @@
   .glaze-tree-missing, .glaze-tree-missing:hover {
     border-color: var(--accent2); color: var(--accent2); cursor: default; background: var(--bg2); opacity: 0.8;
   }
+  .glaze-tree-active, .glaze-tree-active:hover {
+    border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600;
+  }
   @keyframes nbCardFlash {
     0%, 100% { box-shadow: 0 0 0 2px transparent inset; }
     30%, 70% { box-shadow: 0 0 0 2px var(--nb) inset; }
@@ -993,6 +996,9 @@ let glazesLoadedFromNb = null;
 
 let nbBatchMode = false;
 let nbSelectedIds = new Set();
+// num of the record currently open in the edit modal, so any glaze-tree elsewhere
+// on the page that references it by name can highlight the matching node.
+let nbActiveEditNum = null;
 let favBatchMode = false;
 let favSelectedIds = new Set();
 let materials = [];
@@ -1900,6 +1906,9 @@ function openNbModalEdit(ni) {
   renderNbModalAdditives();
   document.getElementById('nb-modal').classList.add('open');
   setTimeout(()=>document.getElementById('nb-modal-name').focus(), 50);
+
+  nbActiveEditNum = rec.num || null;
+  renderNotebook();
 }
 
 function renderNbModalAdditives() {
@@ -1921,6 +1930,7 @@ function nbModalAddAdditive() {
 function closeNbModal(e) {
   if(!e || e.target===document.getElementById('nb-modal')) {
     document.getElementById('nb-modal').classList.remove('open');
+    if(nbActiveEditNum !== null) { nbActiveEditNum = null; renderNotebook(); }
   }
 }
 
@@ -1996,6 +2006,7 @@ async function confirmNbSave() {
 
   updateNbBadge();
   document.getElementById('nb-modal').classList.remove('open');
+  nbActiveEditNum = null;
   renderNotebook();
   // flash nb save btn if from result
   document.querySelectorAll('.nb-save-btn').forEach(b=>{
@@ -2048,11 +2059,19 @@ function renderGlazeTree(rec) {
     childrenOf.get(p).push(gi);
   });
   const escAttr = s => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-  const baseLabel = `基础釉：${formatIngredients(rec.baseIngredients)}`;
+  const composition = formatIngredients(rec.baseIngredients);
+  const baseLabel = `基础釉：${composition}`;
+  // 能推断出"这份基釉其实就是配方本里另一条(无衍生记录的)原始基釉"时，
+  // 根节点/边标签改显示"取自 X号基釉 · 名称"，而不是干巴巴地重复一遍成分。
+  const matchingBase = findMatchingPureBaseRecord(rec);
+  const ownerLabel = matchingBase
+    ? (matchingBase.num ? `${matchingBase.num}号基釉 · ${matchingBase.name}` : `「${matchingBase.name}」基釉`)
+    : null;
   function renderNode(gi) {
     const g = arr[gi];
     const issue = issues[gi];
-    const kids = childrenOf.get(gi) || [];
+    // 用 stepId（而非数组下标 gi）去查子节点——sourceId 存的就是父节点的 stepId。
+    const kids = childrenOf.get(g.stepId) || [];
     const kidsHtml = kids.length ? `<ul>${kids.map(renderNode).join('')}</ul>` : '';
     if (issue) {
       return `<li>
@@ -2062,14 +2081,15 @@ function renderGlazeTree(rec) {
         ${kidsHtml}
       </li>`;
     }
-    const parentLabel = g.sourceId === null ? baseLabel : (arr.find(x=>x.stepId===g.sourceId)?.name || '上步');
+    const parentLabel = g.sourceId === null ? (ownerLabel || '基础釉') : (arr.find(x=>x.stepId===g.sourceId)?.name || '上步');
     const amountLabel = g.amountUnknown ? '？' : `${g.sourceAmount || 0}g`;
     const additivesLabel = (g.additives || []).length
       ? ' + ' + g.additives.map(a => `${a.name}${a.amount}g`).join(' + ')
       : '';
     const targetIdx = findNbIndexByLabel(g.name);
     const missing = targetIdx === -1;
-    const cls = missing ? 'glaze-tree-missing' : '';
+    const active = nbActiveEditNum !== null && g.name === nbActiveEditNum;
+    const cls = [missing ? 'glaze-tree-missing' : '', active ? 'glaze-tree-active' : ''].filter(Boolean).join(' ');
     const clickAttr = missing ? '' : ` onclick="jumpToNbByLabel('${escAttr(g.name)}')"`;
     const tip = missing ? `配方本中未找到「${g.name}」对应的记录` : '点击跳转到对应记录';
     return `<li>
@@ -2080,14 +2100,16 @@ function renderGlazeTree(rec) {
     </li>`;
   }
   const roots = childrenOf.get(null) || []; // null = 本记录基釉，非缺失值
-  const matchingBase = findMatchingPureBaseRecord(rec);
-  const matchHint = matchingBase ? ` <span class="glaze-tree-basematch">(与 ${escAttr(matchingBase.num ? matchingBase.num+' '+matchingBase.name : matchingBase.name)} 基釉相同)</span>` : '';
+  const rootLabel = ownerLabel ? `取自 ${ownerLabel}` : baseLabel;
   const rootHtml = roots.length
-    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="本记录自身基础釉">${escAttr(baseLabel)}${matchHint}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
+    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="${escAttr(composition)}">${escAttr(rootLabel)}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
     : '';
   const orphanHtml = orphanIdx.length ? `<ul>${orphanIdx.map(renderNode).join('')}</ul>` : '';
   if (!rootHtml && !orphanHtml) return '';
-  return `<div class="nb-section-label">衍生树</div><div class="glaze-tree">${rootHtml}${orphanHtml}</div>`;
+  return `<details class="chem-panel">
+    <summary class="chem-summary">🌳 衍生树</summary>
+    <div class="chem-body"><div class="glaze-tree">${rootHtml}${orphanHtml}</div></div>
+  </details>`;
 }
 
 // A tree node's name (e.g. "312") is just a label snapshot, not a real FK to another
