@@ -1001,7 +1001,14 @@
 // ── Supabase client ──
 const SUPABASE_URL = 'https://uthfsgwtakbbgancsvsa.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0aGZzZ3d0YWtiYmdhbmNzdnNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2NDgyMzMsImV4cCI6MjA5OTIyNDIzM30.JyxbkIxTVFJceJvmzQNpY_J3ZA2RLxfAJ-A8FhKQjxM';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    flowType: 'implicit',
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 const PHOTO_BUCKET = 'glaze-photos';
 const PHOTO_SIZE = 800; // max dimension px for resizing
 let currentUserId = null;
@@ -1077,7 +1084,8 @@ async function sendMagicLink() {
   const status = document.getElementById('auth-status');
   if(!email) { status.textContent = '请输入邮箱'; return; }
   status.textContent = '发送中…';
-  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+  const redirectUrl = window.location.origin + window.location.pathname;
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectUrl } });
   status.textContent = error ? ('出错：' + error.message) : '登录链接已发送，请查收邮箱';
 }
 function signOut() { sb.auth.signOut(); }
