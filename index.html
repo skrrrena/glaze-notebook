@@ -101,14 +101,12 @@
     line-height: 1.1;
   }
   header .site-sub {
-    font-family: var(--font-sans);
-    font-size: 12.5px;
-    letter-spacing: 0.05em;
-    line-height: 1.75;
-    margin-top: 9px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    color: var(--ink-3);
+    margin-top: 10px;
   }
-  header .site-sub .line-1 { color: var(--ink-3); }
-  header .site-sub .line-2 { color: var(--accent); }
 
   /* tabs */
   .tabs { display: flex; gap: 22px; padding: 13px 40px 18px; }
@@ -134,7 +132,7 @@
   .calc-layout {
     display: grid;
     grid-template-columns: 340px 1fr;
-    min-height: calc(100vh - 204px);
+    min-height: calc(100vh - 174px);
   }
   .panel-left {
     background: var(--card);
@@ -634,11 +632,11 @@
 
   /* ── photo gallery: full-width strip at top of card, photos are the star ── */
   .photo-gallery {
-    margin-bottom: 14px; padding-bottom: 14px;
-    border-bottom: 1px solid var(--line);
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--line);
   }
-  .photo-gallery.nb-style { border-bottom-color: var(--nb-line); }
-  .photo-gallery.fav-style { border-bottom-color: var(--fav-line); }
+  .photo-gallery.nb-style { border-top-color: var(--nb-line); }
+  .photo-gallery.fav-style { border-top-color: var(--fav-line); }
 
   /* carousel strip */
   .photo-strip {
@@ -650,10 +648,10 @@
   .photo-strip::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
 
   .photo-item {
-    flex: 1 1 160px; min-width: 160px; display: flex; flex-direction: column; gap: 4px;
+    flex-shrink: 0; width: 84px; display: flex; flex-direction: column; gap: 4px;
   }
   .photo-thumb-wrap {
-    position: relative; width: 100%; height: 132px; border-radius: 6px;
+    position: relative; width: 84px; height: 84px; border-radius: 6px;
     overflow: hidden; border: 1px solid var(--line); background: var(--bg2);
     cursor: pointer;
   }
@@ -672,7 +670,7 @@
   }
   .photo-thumb-wrap:hover .photo-del-btn { opacity: 1; }
   .photo-caption-input {
-    width: 100%; font-size: 0.65rem; font-family: var(--font-mono);
+    width: 84px; font-size: 0.65rem; font-family: var(--font-mono);
     padding: 2px 5px; border-radius: 3px;
     background: var(--bg); border: 1px solid var(--line);
     color: var(--ink2); outline: none;
@@ -683,7 +681,7 @@
 
   .photo-add-btn {
     flex-shrink: 0;
-    width: 60px; height: 132px; border-radius: 6px;
+    width: 84px; height: 84px; border-radius: 6px;
     border: 1px dashed var(--line); background: none;
     color: var(--ink3); cursor: pointer; font-size: 1.5rem;
     display: flex; align-items: center; justify-content: center;
@@ -774,10 +772,7 @@
 <header>
   <div>
     <h1>釉谱</h1>
-    <div class="site-sub">
-      <div class="line-1">配方管理 · 批量计算 · 烧成记录</div>
-      <div class="line-2">记录每一次调整</div>
-    </div>
+    <div class="site-sub">Glaze notebook</div>
   </div>
   <div id="auth-status-bar" style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:14px;padding-top:8px;position:relative;z-index:1">
     <button id="theme-toggle-btn" onclick="toggleTheme()" title="切换深浅色" style="background:none;border:1px solid var(--line);color:var(--ink-3);border-radius:4px;padding:3px 9px;cursor:pointer;font-family:inherit;font-size:inherit;line-height:1.4">◐</button>
@@ -2232,7 +2227,6 @@ function nbCardHtml(rec, ni, idPrefix) {
         </div>
       </div>
       <div class="nb-body">
-        ${renderPhotoGallery(rec.photos||[], 'notebook_entries', rec.id, 'nb', 'triggerNbPhoto', 'deleteNbPhoto', idPrefix)}
         <div class="nb-section-label">基础原料</div>
         <div class="nb-row">${baseTags}</div>
         ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
@@ -2251,6 +2245,8 @@ function nbCardHtml(rec, ni, idPrefix) {
             <button class="nb-del-btn" style="white-space:nowrap" onclick="insertBlankLine('${idPrefix}note-input-${ni}')">↵ 空行</button>
             <button class="nb-del-btn" onclick="cancelNbNote(${ni},'${idPrefix}')">取消</button>
           </div>
+        </div>
+        ${renderPhotoGallery(rec.photos||[], 'notebook_entries', rec.id, 'nb', 'triggerNbPhoto', 'deleteNbPhoto', idPrefix)}
         </div>
       </div>
     </div>
