@@ -87,6 +87,7 @@
     color: var(--bg);
     padding: 1.6rem 2.5rem 1.3rem;
     position: relative;
+    z-index: 101;
     overflow: hidden;
     display: flex;
     align-items: baseline;
@@ -755,6 +756,12 @@
 </style>
 </head>
 <body>
+<script>
+  (function(){
+    var saved = localStorage.getItem('theme');
+    if (saved === 'dark' || saved === 'light') document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
 
 <header>
   <div>
@@ -762,6 +769,7 @@
     <p>glaze recipe calculator · additive tracking</p>
   </div>
   <div id="auth-status-bar" style="font-family:var(--font-mono);font-size:0.72rem;display:flex;align-items:center;gap:10px;opacity:0.75;position:relative;z-index:1">
+    <button id="theme-toggle-btn" onclick="toggleTheme()" title="切换深浅色" style="background:none;border:1px solid rgba(245,241,235,0.3);color:inherit;border-radius:4px;padding:3px 9px;cursor:pointer;font-family:inherit;font-size:inherit;line-height:1.4">◐</button>
     <span id="user-email"></span>
     <button id="signout-btn" onclick="signOut()" style="display:none;background:none;border:1px solid rgba(245,241,235,0.3);color:inherit;border-radius:4px;padding:3px 10px;cursor:pointer;font-family:inherit;font-size:inherit">退出登录</button>
   </div>
@@ -991,6 +999,29 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const PHOTO_BUCKET = 'glaze-photos';
 const PHOTO_SIZE = 800; // max dimension px for resizing
 let currentUserId = null;
+
+// ── 深浅色手动切换 ──
+function applyTheme(theme){
+  if (theme === 'dark' || theme === 'light') {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.removeItem('theme');
+  }
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.textContent = (theme === 'dark') ? '☀' : '◐';
+}
+function toggleTheme(){
+  const current = document.documentElement.getAttribute('data-theme')
+    || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+(function(){
+  const saved = localStorage.getItem('theme');
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn && (saved === 'dark' || saved === 'light')) btn.textContent = (saved === 'dark') ? '☀' : '◐';
+})();
 
 let baseIngredients = [
   {name:'氧化锌', parts:22},
