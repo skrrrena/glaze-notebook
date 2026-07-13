@@ -705,6 +705,8 @@
   <button class="tab-btn tab-nb" onclick="switchTab('nb',this)">配方本 <span id="nb-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-fav" onclick="switchTab('fav',this)">收藏夹 <span id="fav-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-mat" onclick="switchTab('mat',this)">原料库</button>
+  <button class="tab-btn tab-fc" onclick="switchTab('fc',this)">烧成曲线</button>
+  <button class="tab-btn tab-calib" onclick="switchTab('calib',this)">规律校准</button>
 </div>
 
 <!-- calc tab -->
@@ -825,6 +827,26 @@
   </div>
 </div>
 
+<!-- firing curves tab -->
+<div class="tab-panel" id="tab-fc">
+  <div class="fav-panel">
+    <div class="fav-toolbar">
+      <span class="import-hint">共用窑固定曲线，从这里查看/编辑；记录在「配方本」里关联对应曲线。</span>
+    </div>
+    <div id="fc-list"></div>
+  </div>
+</div>
+
+<!-- calibration tab -->
+<div class="tab-panel" id="tab-calib">
+  <div class="fav-panel">
+    <div class="fav-toolbar">
+      <span class="import-hint">按烧成曲线分组、只用"可靠"数据，从试片实际效果里找规律——不是套教科书阈值。</span>
+    </div>
+    <div id="calib-body"></div>
+  </div>
+</div>
+
 <!-- auth modal -->
 <div class="modal-overlay open" id="auth-modal">
   <div class="modal">
@@ -859,6 +881,17 @@
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">备注</div>
     <textarea id="nb-modal-note" placeholder="颜色效果、烧成温度、观察结果…" style="min-height:64px"></textarea>
     <button class="btn-ghost" onclick="insertBlankLine('nb-modal-note')" style="font-size:0.74rem;margin-top:4px;color:var(--ink3)">↵ 插入空行</button>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">烧成曲线</div>
+    <select id="nb-modal-firing-curve" style="width:100%"></select>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">数据可信度（供"规律校准"分组用，不影响 Seger 计算）</div>
+    <select id="nb-modal-confidence" style="width:100%">
+      <option value="可靠">可靠</option>
+      <option value="估算">估算（用量/配比是估的）</option>
+      <option value="污染">污染（实物被搅混/沾染）</option>
+      <option value="无法计算">无法计算（市售釉等）</option>
+    </select>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">效果标签（可多选，供"规律校准"用）</div>
+    <div id="nb-modal-effect-tags"></div>
     <div class="nbmodal-btns">
       <button class="nbmodal-cancel" onclick="closeNbModal()">取消</button>
       <button class="nbmodal-confirm" onclick="confirmNbSave()">存入配方本</button>
@@ -963,6 +996,7 @@ let nbSelectedIds = new Set();
 let favBatchMode = false;
 let favSelectedIds = new Set();
 let materials = [];
+let firingCurves = [];
 
 // ── auth ──
 async function sendMagicLink() {
@@ -1001,6 +1035,10 @@ function rowToNotebook(row) {
     glazes: row.glazes||[], additives: row.additives||{},
     photos: (row.photos||[]).map(p=>({...p})),
     savedAt: fmtDate(row.updated_at || row.created_at),
+    firingCurveId: row.firing_curve_id || null,
+    peakTempOverride: row.peak_temp_override ?? null,
+    dataConfidence: row.data_confidence || '可靠',
+    effectTags: row.effect_tags || [],
   };
 }
 function rowToFavourite(row) {
@@ -1026,19 +1064,29 @@ function rowToMaterial(row) {
     verified: !!row.verified, note: row.note||'',
   };
 }
+function rowToFiringCurve(row) {
+  return {
+    id: row.id, name: row.name, note: row.note||'',
+    segments: row.segments||[], startTemp: row.start_temp ?? 30,
+    totalMinutes: row.total_minutes, peakTemp: row.peak_temp,
+    atmosphere: row.atmosphere || '氧化',
+  };
+}
 
 // ── boot: fetch everything for the signed-in user, then render ──
 async function boot() {
-  const [nbRes, favRes, histRes, matRes] = await Promise.all([
+  const [nbRes, favRes, histRes, matRes, fcRes] = await Promise.all([
     sb.from('notebook_entries').select('*').order('created_at', {ascending:false}),
     sb.from('favourites').select('*').order('created_at', {ascending:false}),
     sb.from('history_entries').select('*').order('created_at', {ascending:false}).limit(50),
     sb.from('materials').select('*').order('name'),
+    sb.from('firing_curves').select('*').order('name'),
   ]);
   notebook = (nbRes.data||[]).map(rowToNotebook);
   favourites = (favRes.data||[]).map(rowToFavourite);
   history = (histRes.data||[]).map(rowToHistory);
   materials = (matRes.data||[]).map(rowToMaterial);
+  firingCurves = (fcRes.data||[]).map(rowToFiringCurve);
 
   // First login for this account: give them a starting materials library (typical
   // textbook values, all flagged source:'typical'/verified:false) instead of an empty
@@ -1047,6 +1095,10 @@ async function boot() {
   if(materials.length === 0) {
     const { data, error } = await sb.from('materials').insert(MATERIAL_SEED).select();
     if(!error) materials = (data||[]).map(rowToMaterial);
+  }
+  if(firingCurves.length === 0) {
+    const { data, error } = await sb.from('firing_curves').insert(FIRING_CURVE_SEED).select();
+    if(!error) firingCurves = (data||[]).map(rowToFiringCurve);
   }
 
   await Promise.all([resolvePhotoUrls(notebook), resolvePhotoUrls(favourites)]);
@@ -1060,6 +1112,8 @@ async function boot() {
   renderFavourites();
   renderHistory();
   renderMaterials();
+  renderFiringCurves();
+  renderCalibration();
 }
 
 // ── photo storage (Supabase Storage) ──
@@ -1328,6 +1382,40 @@ const MATERIAL_SEED = [
   { name:'T60324锆3号', role:'opacifier', oxides:{ZrO2:67.2, SiO2:32.8}, loi:0, source:'typical', verified:false, note:'⚠️ 需确认是否为硅酸锆 ZrSiO4' },
 ];
 
+// 用户提供的真实结晶曲线：1235℃保温20min熔透 → 2min内急冷至1135℃(-50℃/min)过冷 → 1135℃保温90min是晶体生长窗口。
+// 常规中温不走这条曲线（直接冷却，不结晶）。
+const FIRING_CURVE_SEED = [
+  {
+    name: '常规中温（无特殊曲线）',
+    note: '直接冷却，不结晶；具体升温速率未记录，这条曲线只作为反向校准的分组标记用，不代表精确温控数据',
+    start_temp: 30,
+    total_minutes: null,
+    peak_temp: 1225,
+    atmosphere: '氧化',
+    segments: [],
+  },
+  {
+    name: '结晶曲线 A',
+    note: '共用窑固定曲线（学员试片）',
+    start_temp: 30,
+    total_minutes: 422,
+    peak_temp: 1235,
+    atmosphere: '氧化',
+    segments: [
+      { minutes: 20, targetTemp: 200,  rate: 8.5 },
+      { minutes: 20, targetTemp: 400,  rate: 10.0 },
+      { minutes: 30, targetTemp: 600,  rate: 6.7 },
+      { minutes: 50, targetTemp: 850,  rate: 5.0 },
+      { minutes: 60, targetTemp: 980,  rate: 2.2 },
+      { minutes: 60, targetTemp: 1100, rate: 2.0 },
+      { minutes: 70, targetTemp: 1235, rate: 1.9 },
+      { minutes: 20, targetTemp: 1235, rate: 0,     type: 'hold',  label: '峰值保温' },
+      { minutes: 2,  targetTemp: 1135, rate: -50.0, type: 'crash', label: '急冷' },
+      { minutes: 90, targetTemp: 1135, rate: 0,     type: 'hold',  label: '结晶保温' },
+    ],
+  },
+];
+
 // 分子量(§3.2)。用户后续新增原料若用到表外氧化物，计算时会明确标出“未知分子量”，不会静默出错。
 const OXIDE_MW = {
   SiO2:60.08, Al2O3:101.96, K2O:94.20, Na2O:61.98, CaO:56.08, MgO:40.30,
@@ -1423,13 +1511,12 @@ function computeSegerFormula(baseIngredients, additivesObj) {
   };
 }
 
+// 不做"哑光/亮光区间"判断：教科书阈值假设的体系和本窑的中温、低铝、高熔剂配方不匹配
+// （实测哑光的 100 号 SiO2:Al2O3=9.88-10.36，比亮光的 01 号 9.08-9.55 还高，按教科书阈值会判反）。
+// 效果判断需要靠反向校准（见"规律校准"标签页），这里只报数值。
 function sgaInterpretation(sga) {
   if(sga == null) return '配方中无 Al2O3，无法计算硅铝比';
-  if(sga < 4) return '硅铝比 < 4:1，可能欠熔/生烧';
-  if(sga <= 6) return '硅铝比 4:1–6:1，偏哑光区间';
-  if(sga <= 8) return '硅铝比 7:1–8:1，偏半哑光/缎面区间';
-  if(sga <= 10) return '硅铝比 8:1–10:1，偏亮光区间';
-  return '硅铝比 > 10:1，偏高硅，可能烧不熟或表面干涩（视温度而定）';
+  return '';
 }
 
 function renderChemPanel(baseIngredients, additivesObj) {
@@ -1470,11 +1557,12 @@ function renderChemPanel(baseIngredients, additivesObj) {
         <div class="chem-col"><div class="chem-col-title">RO2</div>${formRows}</div>
         ${otherRows ? `<div class="chem-col"><div class="chem-col-title">其他</div>${otherRows}</div>` : ''}
       </div>
-      <div class="chem-ratio">SiO2:Al2O3 = ${r.ratios.sga!=null ? r.ratios.sga.toFixed(2)+':1' : '—'}<span class="chem-note">${sgaInterpretation(r.ratios.sga)}（经验区间，随烧成温度变化，建议用自己的试片数据校准）</span></div>
+      <div class="chem-ratio">SiO2:Al2O3 = ${r.ratios.sga!=null ? r.ratios.sga.toFixed(2)+':1' : '—'}${sgaInterpretation(r.ratios.sga) ? `<span class="chem-note">${sgaInterpretation(r.ratios.sga)}</span>` : ''}</div>
       <div class="chem-ratio">${fluxSummary}</div>
       ${colorantRows ? `<div class="chem-col-title" style="margin-top:8px">着色剂外加%</div>${colorantRows}` : ''}
       ${opacifierRows ? `<div class="chem-col-title" style="margin-top:8px">乳浊剂外加%</div>${opacifierRows}` : ''}
       ${r.reliabilityNotes.length ? `<div class="chem-warning" style="margin-top:8px">${r.reliabilityNotes.join('<br>')}</div>` : ''}
+      <div class="chem-note" style="margin-top:6px;display:block">化学指标仅供比较，效果预判需先完成校准（见"规律校准"标签页）</div>
     </div>
   </details>`;
 }
@@ -1523,6 +1611,206 @@ function renderMaterials() {
   }).join('');
 }
 
+// ── 烧成曲线 ──
+function computeCurvePoints(curve) {
+  const pts = [{ t:0, temp:curve.startTemp, type:'start' }];
+  let t = 0;
+  (curve.segments||[]).forEach(seg => {
+    t += seg.minutes;
+    pts.push({ t, temp:seg.targetTemp, type:seg.type||'ramp', label:seg.label||'' });
+  });
+  return pts;
+}
+function renderFiringCurveChart(curve) {
+  if(!curve.segments || curve.segments.length === 0) {
+    return `<div class="chem-note" style="display:block;padding:8px 0">未录入分段温度数据，仅用于分组标记</div>`;
+  }
+  const pts = computeCurvePoints(curve);
+  const W = 640, H = 200, PAD = 34;
+  const maxT = pts[pts.length-1].t || 1;
+  const temps = pts.map(p=>p.temp);
+  const minTemp = Math.min(...temps), maxTemp = Math.max(...temps);
+  const tempRange = (maxTemp - minTemp) || 1;
+  const x = tm => PAD + (tm/maxT) * (W - PAD*2);
+  const y = temp => H - PAD - ((temp - minTemp)/tempRange) * (H - PAD*2);
+
+  let segEls = '';
+  for(let i=1;i<pts.length;i++){
+    const a = pts[i-1], b = pts[i];
+    const color = b.type === 'crash' ? 'var(--danger)' : (b.type === 'hold' ? 'var(--nb)' : 'var(--ink2)');
+    const width = (b.type === 'crash' || b.type === 'hold') ? 3 : 1.5;
+    segEls += `<line x1="${x(a.t).toFixed(1)}" y1="${y(a.temp).toFixed(1)}" x2="${x(b.t).toFixed(1)}" y2="${y(b.temp).toFixed(1)}" stroke="${color}" stroke-width="${width}" />`;
+    if(b.label) segEls += `<text x="${x(b.t).toFixed(1)}" y="${(y(b.temp)-8).toFixed(1)}" font-size="10" fill="${color}" text-anchor="middle">${b.label}</text>`;
+  }
+  const dots = pts.map(p=>`<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.temp).toFixed(1)}" r="2.5" fill="var(--ink3)" />`).join('');
+  const axisLabels = `
+    <text x="${PAD}" y="${H-8}" font-size="9" fill="var(--ink3)">0min</text>
+    <text x="${W-PAD}" y="${H-8}" font-size="9" fill="var(--ink3)" text-anchor="end">${maxT}min</text>
+    <text x="${PAD-6}" y="${(y(maxTemp)+4).toFixed(1)}" font-size="9" fill="var(--ink3)" text-anchor="end">${maxTemp}°</text>
+    <text x="${PAD-6}" y="${(y(minTemp)+4).toFixed(1)}" font-size="9" fill="var(--ink3)" text-anchor="end">${minTemp}°</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-width:640px;display:block;margin-top:6px">${segEls}${dots}${axisLabels}</svg>`;
+}
+async function updateFiringCurveField(id, field, value) {
+  const c = firingCurves.find(x=>x.id===id);
+  if(!c) return;
+  c[field] = value;
+  const dbField = field === 'peakTemp' ? 'peak_temp' : field;
+  await sb.from('firing_curves').update({[dbField]: value}).eq('id', id);
+}
+function renderFiringCurves() {
+  const wrap = document.getElementById('fc-list');
+  if(!wrap) return;
+  wrap.innerHTML = firingCurves.map(c => `
+    <div class="mat-card">
+      <div class="mat-row">
+        <strong class="mat-name">${c.name}</strong>
+        <span style="font-size:0.72rem;color:var(--ink3)">峰值 ${c.peakTemp ?? '—'}℃ · 全程 ${c.totalMinutes ?? '—'} min · ${c.atmosphere}</span>
+      </div>
+      ${renderFiringCurveChart(c)}
+      <div class="mat-row">
+        <label style="font-size:0.7rem;color:var(--ink3)">备注</label>
+        <input type="text" value="${c.note}" style="flex:1;font-size:0.75rem" onchange="updateFiringCurveField('${c.id}','note',this.value)">
+      </div>
+    </div>`).join('') || `<div class="empty-result" style="padding:20px 0"><div class="big">窑</div>暂无烧成曲线</div>`;
+}
+
+// ── 反向校准（§3）──
+// 效果信号优先用用户手动打的 effectTags；老记录大多还没补标签，
+// 退而用 note/name 里的关键词做弱推断，明确标注来源，不假装是用户确认过的数据。
+const NOTE_EFFECT_PATTERNS = [
+  { tag:'结晶', re:/结晶|晶花|月魄白/ },
+  { tag:'开裂', re:/开裂|裂纹|裂缝/ },
+  { tag:'流动', re:/流动|鼻涕釉|下流|挂流/ },
+  { tag:'哑光', re:/哑光|无光/ },
+  { tag:'亮光', re:/亮光|光亮/ },
+  { tag:'乳浊', re:/乳浊/ },
+];
+function inferredEffect(rec) {
+  if((rec.effectTags||[]).length) return { tags: rec.effectTags, source:'用户标签' };
+  const text = (rec.name||'') + ' ' + (rec.note||'');
+  const tags = NOTE_EFFECT_PATTERNS.filter(p=>p.re.test(text)).map(p=>p.tag);
+  return { tags, source: tags.length ? 'note 关键词推断（非用户确认）' : null };
+}
+function statRange(nums) {
+  if(!nums.length) return '—';
+  const mn = Math.min(...nums), mx = Math.max(...nums);
+  return mn === mx ? mn.toFixed(3) : `${mn.toFixed(3)} – ${mx.toFixed(3)}`;
+}
+function calibReliableGroup(curveId) {
+  return notebook
+    .filter(r => r.firingCurveId === curveId && r.dataConfidence === '可靠')
+    .map(rec => ({ rec, seger: computeSegerFormula(rec.baseIngredients, rec.additives) }))
+    .filter(x => x.seger.ok);
+}
+function calibRecordRow(rec, seger) {
+  const u = seger.unity;
+  const al = u.Al2O3!=null ? u.Al2O3.toFixed(3) : '—';
+  const zn = u.ZnO!=null ? u.ZnO.toFixed(3) : '—';
+  const si = u.SiO2!=null ? u.SiO2.toFixed(3) : '—';
+  const sga = seger.ratios.sga!=null ? seger.ratios.sga.toFixed(2) : '—';
+  return `<div class="chem-oxide-row"><span>[${rec.num||'—'}] ${rec.name}</span><span>Al2O3 ${al} · ZnO ${zn} · SiO2 ${si} · Si:Al ${sga}</span></div>`;
+}
+
+function renderCalibration() {
+  const wrap = document.getElementById('calib-body');
+  if(!wrap) return;
+
+  const crystalCurve = firingCurves.find(c => c.name === '结晶曲线 A');
+  const regularCurve = firingCurves.find(c => c.name === '常规中温（无特殊曲线）');
+  const crystalItems = crystalCurve ? calibReliableGroup(crystalCurve.id) : [];
+  const regularItems = regularCurve ? calibReliableGroup(regularCurve.id) : [];
+  const unclassifiedCount = notebook.filter(r => !r.firingCurveId).length;
+  const unreliableCount = notebook.filter(r => r.dataConfidence !== '可靠').length;
+
+  const sections = [];
+
+  sections.push(`
+    <div class="mat-card">
+      <div class="chem-col-title">数据覆盖</div>
+      <div class="chem-oxide-row"><span>结晶曲线组（可靠）</span><span>${crystalItems.length} 条</span></div>
+      <div class="chem-oxide-row"><span>常规曲线组（可靠）</span><span>${regularItems.length} 条</span></div>
+      <div class="chem-oxide-row"><span>未分类烧成曲线</span><span>${unclassifiedCount} 条（不参与校准）</span></div>
+      <div class="chem-oxide-row"><span>数据可信度非"可靠"</span><span>${unreliableCount} 条（不参与校准）</span></div>
+    </div>`);
+
+  // 假设 B：结晶是否需要低 Al2O3
+  const crystalAl = crystalItems.map(x=>x.seger.unity.Al2O3).filter(v=>v!=null);
+  const regularAl = regularItems.map(x=>x.seger.unity.Al2O3).filter(v=>v!=null);
+  let hypB;
+  if(crystalAl.length < 2 || regularAl.length < 2) {
+    hypB = `样本量不足（结晶曲线组 ${crystalAl.length} 条、常规曲线组 ${regularAl.length} 条含 Al2O3 数据），暂不能下结论。`;
+  } else {
+    const cMax = Math.max(...crystalAl), rMin = Math.min(...regularAl);
+    hypB = cMax < rMin
+      ? `结晶曲线组 Al2O3（${statRange(crystalAl)}）整体低于常规曲线组（${statRange(regularAl)}），支持"结晶需要更低 Al2O3"——但见下方 306 系对照，常规曲线组内部并不均匀，光看这个对比会漏掉重要例外。`
+      : `两组 Al2O3 区间有重叠（结晶曲线组 ${statRange(crystalAl)}，常规曲线组 ${statRange(regularAl)}），不能简单下"低 Al2O3→结晶"的结论——常规曲线组里混有 306 系这种本身 Al2O3 也很低的配方，见下方专门对照。`;
+  }
+  sections.push(`
+    <div class="mat-card">
+      <div class="chem-col-title">假设 B：结晶是否需要低 Al2O3</div>
+      <div class="chem-note" style="display:block;margin-bottom:6px">结晶曲线组</div>
+      ${crystalItems.map(x=>calibRecordRow(x.rec,x.seger)).join('') || '<div class="chem-note" style="display:block">（无）</div>'}
+      <div class="chem-note" style="display:block;margin:6px 0">常规曲线组</div>
+      ${regularItems.map(x=>calibRecordRow(x.rec,x.seger)).join('') || '<div class="chem-note" style="display:block">（无）</div>'}
+      <div class="chem-ratio">${hypB}</div>
+    </div>`);
+
+  // 201 系（结晶曲线）vs 306 系（常规曲线，仍结晶）—— 天然对照组
+  const series201 = crystalItems.filter(x => ['201','202','204','205','206','207'].includes(x.rec.num));
+  const series306 = regularItems.filter(x => ['306','311','312','313','314','315','316'].includes(x.rec.num));
+  sections.push(`
+    <div class="mat-card">
+      <div class="chem-col-title">201 系（结晶曲线）vs 306 系（常规曲线，但也结晶）—— 天然对照组</div>
+      <div class="chem-note" style="display:block;margin-bottom:6px">201 系（走结晶曲线）</div>
+      ${series201.map(x=>calibRecordRow(x.rec,x.seger)).join('') || '<div class="chem-note" style="display:block">（无可靠数据）</div>'}
+      <div class="chem-note" style="display:block;margin:6px 0">306 系（走常规曲线，仍长出晶花/月魄白）</div>
+      ${series306.map(x=>calibRecordRow(x.rec,x.seger)).join('') || '<div class="chem-note" style="display:block">（无可靠数据；306 本身因实物污染标记不可靠，仅 311-316 计入）</div>'}
+      <div class="chem-ratio">来自你自己数据的发现：结晶不一定需要结晶曲线（crash-cool + 保温），配方本身高 ZnO、极低 Al2O3、高流动性（306 是"鼻涕釉"）可能就足够让熔体在冷却过程中析晶。这不是教科书规律，只是这批数据里观察到的现象，样本仍然很小，仅供参考。</div>
+    </div>`);
+
+  // 假设 A：哑光效果来自 BaO+MgO 而非硅铝比
+  const withEffect = [...crystalItems, ...regularItems].map(x => ({ ...x, effect: inferredEffect(x.rec) }));
+  const matteItems = withEffect.filter(x => x.effect.tags.includes('哑光'));
+  const glossItems = withEffect.filter(x => x.effect.tags.includes('亮光'));
+  let hypA;
+  if(matteItems.length < 1 || glossItems.length < 1) {
+    hypA = `目前已分类烧成曲线组里，带"哑光"效果信号的 ${matteItems.length} 条、带"亮光"信号的 ${glossItems.length} 条，样本不足以比较。多数老记录还没有补充效果标签（配方本编辑弹窗里的"效果"勾选），补充后这里会自动出结果。`;
+  } else {
+    const matteBaoMgo = matteItems.map(x => (x.seger.unity.BaO||0) + (x.seger.unity.MgO||0));
+    const glossBaoMgo = glossItems.map(x => (x.seger.unity.BaO||0) + (x.seger.unity.MgO||0));
+    const matteAl = matteItems.map(x => x.seger.unity.Al2O3||0);
+    const glossAl = glossItems.map(x => x.seger.unity.Al2O3||0);
+    hypA = `哑光组 BaO+MgO ${statRange(matteBaoMgo)}（Al2O3 ${statRange(matteAl)}） vs 亮光组 BaO+MgO ${statRange(glossBaoMgo)}（Al2O3 ${statRange(glossAl)}）——样本仍偏小，仅供参考，不是定论。`;
+  }
+  sections.push(`
+    <div class="mat-card">
+      <div class="chem-col-title">假设 A：哑光效果来自 BaO+MgO，而非硅铝比</div>
+      ${[...matteItems, ...glossItems].map(x => `<div class="chem-oxide-row"><span>[${x.rec.num}] ${x.rec.name}<span class="chem-note" style="display:inline;margin-left:6px">(${x.effect.tags.join('/')}，${x.effect.source})</span></span><span>BaO+MgO ${((x.seger.unity.BaO||0)+(x.seger.unity.MgO||0)).toFixed(3)} · Al2O3 ${(x.seger.unity.Al2O3||0).toFixed(3)}</span></div>`).join('')}
+      <div class="chem-ratio">${hypA}</div>
+    </div>`);
+
+  // 假设 C：开裂与碱金属/硅含量
+  const crackItems = withEffect.filter(x => x.effect.tags.includes('开裂'));
+  const noCrackItems = withEffect.filter(x => !x.effect.tags.includes('开裂'));
+  let hypC;
+  if(crackItems.length < 1) {
+    hypC = `已分类烧成曲线组里目前没有带"开裂"效果信号的可靠记录（301 裂纹丝光镁基釉是最直接的例子，但它的烧成曲线还未确认，暂不计入校准）。确认 301 系的烧成曲线、或给相关记录补充效果标签后可以重新分析。`;
+  } else {
+    const crackSi = crackItems.map(x => x.seger.unity.SiO2||0);
+    const crackAlkali = crackItems.map(x => (x.seger.unity.K2O||0)+(x.seger.unity.Na2O||0)+(x.seger.unity.Li2O||0));
+    const noCrackSi = noCrackItems.map(x => x.seger.unity.SiO2||0);
+    const noCrackAlkali = noCrackItems.map(x => (x.seger.unity.K2O||0)+(x.seger.unity.Na2O||0)+(x.seger.unity.Li2O||0));
+    hypC = `开裂组 SiO2 ${statRange(crackSi)}、碱金属 ${statRange(crackAlkali)} vs 其余无开裂信号记录 SiO2 ${statRange(noCrackSi)}、碱金属 ${statRange(noCrackAlkali)}（"无开裂信号"不代表确认没裂，只是 note 里没提到）——样本量小，仅供参考。`;
+  }
+  sections.push(`
+    <div class="mat-card">
+      <div class="chem-col-title">假设 C：开裂与碱金属/硅含量</div>
+      <div class="chem-ratio">${hypC}</div>
+    </div>`);
+
+  wrap.innerHTML = sections.join('');
+}
+
 // ── tab switching ──
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1533,12 +1821,29 @@ function switchTab(name, btn) {
   if(name==='hist') renderHistory();
   if(name==='nb') renderNotebook();
   if(name==='mat') renderMaterials();
+  if(name==='fc') renderFiringCurves();
+  if(name==='calib') renderCalibration();
 }
 
 // ── notebook ──
 function updateNbBadge() {
   const b = document.getElementById('nb-count-badge');
   if(b) b.textContent = notebook.length > 0 ? `(${notebook.length})` : '';
+}
+
+const EFFECT_TAG_OPTIONS = ['亮光','哑光','半哑光/缎面','结晶','开裂','流动','乳浊','其他'];
+function firingCurveOptionsHtml(selectedId) {
+  return '<option value="">（未分类 / 未知）</option>' +
+    firingCurves.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name}</option>`).join('');
+}
+function effectTagCheckboxesHtml(selected) {
+  selected = selected || [];
+  return EFFECT_TAG_OPTIONS.map(t=>
+    `<label style="font-size:0.72rem;margin-right:10px;display:inline-block;margin-bottom:4px"><input type="checkbox" class="nb-modal-effect-tag" value="${t}" ${selected.includes(t)?'checked':''}> ${t}</label>`
+  ).join('');
+}
+function readEffectTagCheckboxes() {
+  return [...document.querySelectorAll('.nb-modal-effect-tag:checked')].map(el=>el.value);
 }
 
 function openNbModal(glazeIndex, glazeState) {
@@ -1550,6 +1855,9 @@ function openNbModal(glazeIndex, glazeState) {
   document.getElementById('nb-modal-num').value = glazeIndex !== null ? (glazes[glazeIndex].name.replace(/号.*/, '号') || '') : '';
   document.getElementById('nb-modal-name').value = glazeIndex !== null ? glazes[glazeIndex].name : '';
   document.getElementById('nb-modal-note').value = '';
+  document.getElementById('nb-modal-firing-curve').innerHTML = firingCurveOptionsHtml(null);
+  document.getElementById('nb-modal-confidence').value = '可靠';
+  document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml([]);
 
   // base ingredients display (read-only labels)
   const baseWrap = document.getElementById('nb-modal-base-wrap');
@@ -1579,6 +1887,9 @@ function openNbModalEdit(ni) {
   document.getElementById('nb-modal-num').value = rec.num || '';
   document.getElementById('nb-modal-name').value = rec.name || '';
   document.getElementById('nb-modal-note').value = rec.note || '';
+  document.getElementById('nb-modal-firing-curve').innerHTML = firingCurveOptionsHtml(rec.firingCurveId);
+  document.getElementById('nb-modal-confidence').value = rec.dataConfidence || '可靠';
+  document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml(rec.effectTags);
 
   const baseWrap = document.getElementById('nb-modal-base-wrap');
   baseWrap.innerHTML = (rec.baseIngredients||[]).map(i =>
@@ -1622,13 +1933,16 @@ async function confirmNbSave() {
 
   const additives = {};
   nbModalAdditives.forEach(a => { if(a.name.trim()) additives[a.name.trim()] = a.pct; });
+  const firingCurveId = document.getElementById('nb-modal-firing-curve').value || null;
+  const dataConfidence = document.getElementById('nb-modal-confidence').value;
+  const effectTags = readEffectTagCheckboxes();
 
   if(editIdx !== '') {
     // edit mode: this modal only shows base ingredients/glazes read-only (from the
     // record itself), it never lets you change them — so don't touch those fields.
     // Writing the global calculator state here would silently overwrite the record's
     // base recipe with whatever unrelated recipe happens to be loaded in the Calc tab.
-    const payload = { num, name, note, additives };
+    const payload = { num, name, note, additives, firing_curve_id: firingCurveId, data_confidence: dataConfidence, effect_tags: effectTags };
     const existing = notebook[parseInt(editIdx)];
     const { data, error } = await sb.from('notebook_entries').update(payload).eq('id', existing.id).select().single();
     if(error) { alert('保存失败：'+error.message); return; }
@@ -1673,6 +1987,7 @@ async function confirmNbSave() {
         additives: g.additives.map(a=>({...a})),
       })) : [],
       additives,
+      firing_curve_id: firingCurveId, data_confidence: dataConfidence, effect_tags: effectTags,
     };
     const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
     if(error) { alert('保存失败：'+error.message); return; }
@@ -1811,6 +2126,12 @@ function renderNotebook() {
     const addTags = Object.entries(rec.additives||{}).map(([name,pct])=>
       `<span class="nb-additive-tag">${name} +${(+pct).toFixed(3)}%</span>`
     ).join('');
+    const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
+    const metaBadges = [
+      fc ? `<span class="nb-ingredient-tag">窑：${fc.name}</span>` : '',
+      rec.dataConfidence && rec.dataConfidence !== '可靠' ? `<span class="nb-additive-tag" style="color:var(--danger)">数据：${rec.dataConfidence}</span>` : '',
+      ...(rec.effectTags||[]).map(t=>`<span class="nb-ingredient-tag">${t}</span>`),
+    ].join('');
 
     return `
       <div class="nb-card ${nbBatchMode && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="nb-card-${ni}">
@@ -1834,6 +2155,7 @@ function renderNotebook() {
           <div class="nb-section-label">基础原料</div>
           <div class="nb-row">${baseTags}</div>
           ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
+          ${metaBadges ? `<div class="nb-row" style="margin-top:4px">${metaBadges}</div>` : ''}
           ${renderChemPanel(rec.baseIngredients, rec.additives)}
           ${renderGlazeTree(rec)}
           <div id="nbnote-display-${ni}" onclick="editNbNote(${ni})" style="cursor:pointer">

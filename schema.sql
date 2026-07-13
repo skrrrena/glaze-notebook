@@ -74,11 +74,36 @@ create table public.materials (
 create index materials_user_id_idx on public.materials(user_id);
 create unique index materials_user_name_uidx on public.materials(user_id, name);
 
+-- ── firing_curves（烧成曲线，独立可复用实体；每用户各自维护一份）──
+create table public.firing_curves (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  name         text not null,
+  note         text default '',
+  segments     jsonb not null default '[]'::jsonb,  -- [{minutes,targetTemp,rate,type?,label?}]
+  start_temp   numeric not null default 30,
+  total_minutes numeric,
+  peak_temp    numeric,
+  atmosphere   text default '氧化',
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index firing_curves_user_id_idx on public.firing_curves(user_id);
+create unique index firing_curves_user_name_uidx on public.firing_curves(user_id, name);
+
+-- ── notebook_entries 追加：关联烧成曲线 + 数据可信度（反向校准用）──
+alter table public.notebook_entries add column if not exists firing_curve_id uuid references public.firing_curves(id) on delete set null;
+alter table public.notebook_entries add column if not exists peak_temp_override numeric;
+alter table public.notebook_entries add column if not exists data_confidence text not null default '可靠'
+  check (data_confidence in ('可靠','估算','污染','无法计算'));
+alter table public.notebook_entries add column if not exists effect_tags jsonb not null default '[]'::jsonb; -- ['亮光','哑光','结晶','开裂','流动',...]
+
 -- ── RLS：每个人只能读写自己的行 ──
 alter table public.notebook_entries enable row level security;
 alter table public.favourites        enable row level security;
 alter table public.history_entries   enable row level security;
 alter table public.materials         enable row level security;
+alter table public.firing_curves     enable row level security;
 
 create policy "nb select own"  on public.notebook_entries for select using (auth.uid() = user_id);
 create policy "nb insert own"  on public.notebook_entries for insert with check (auth.uid() = user_id);
@@ -99,6 +124,11 @@ create policy "mat select own" on public.materials for select using (auth.uid() 
 create policy "mat insert own" on public.materials for insert with check (auth.uid() = user_id);
 create policy "mat update own" on public.materials for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "mat delete own" on public.materials for delete using (auth.uid() = user_id);
+
+create policy "fc select own" on public.firing_curves for select using (auth.uid() = user_id);
+create policy "fc insert own" on public.firing_curves for insert with check (auth.uid() = user_id);
+create policy "fc update own" on public.firing_curves for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "fc delete own" on public.firing_curves for delete using (auth.uid() = user_id);
 
 -- ── 每用户历史记录只保留最近 50 条（对应旧版客户端 history.slice(0,50)）──
 create or replace function public.trim_history() returns trigger
@@ -129,6 +159,8 @@ create trigger notebook_set_updated_at before update on public.notebook_entries
 create trigger favourites_set_updated_at before update on public.favourites
   for each row execute function public.set_updated_at();
 create trigger materials_set_updated_at before update on public.materials
+  for each row execute function public.set_updated_at();
+create trigger firing_curves_set_updated_at before update on public.firing_curves
   for each row execute function public.set_updated_at();
 
 -- ── Storage：私有 bucket + 按 user_id 分文件夹隔离 ──
