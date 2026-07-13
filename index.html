@@ -383,6 +383,12 @@
     padding: 3px 9px; border-radius: 3px;
     background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line);
   }
+  .nb-effect-tag {
+    display: inline-block; font-family: 'Noto Serif SC', serif;
+    background: transparent; border: 1px solid #B5744A; color: #B5744A;
+    border-radius: 999px; padding: 2px 11px;
+    font-size: 0.85em; letter-spacing: 0.05em;
+  }
   .nb-note {
     font-size: 0.78rem; color: var(--ink2); line-height: 1.6;
     font-style: italic; margin-top: 8px; padding-top: 8px;
@@ -2121,8 +2127,10 @@ function nbCardHtml(rec, ni, idPrefix) {
   const metaBadges = [
     fc ? `<span class="nb-ingredient-tag">窑：${fc.name}</span>` : '',
     rec.dataConfidence && rec.dataConfidence !== '可靠' ? `<span class="nb-additive-tag" style="color:var(--danger)">数据：${rec.dataConfidence}</span>` : '',
-    ...(rec.effectTags||[]).map(t=>`<span class="nb-ingredient-tag">${t}</span>`),
   ].join('');
+  const effectTagsHtml = (rec.effectTags||[]).length
+    ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${rec.effectTags.map(t=>`<span class="nb-effect-tag">${t}</span>`).join('')}</div>`
+    : '';
   // batch-select is a notebook-tab-only UI mode; the starred tab has no batch bar
   const showBatchUi = idPrefix === 'nb' && nbBatchMode;
 
@@ -2138,6 +2146,7 @@ function nbCardHtml(rec, ni, idPrefix) {
           <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
           <button class="nb-del-btn" onclick="cancelNbName(${ni},'${idPrefix}')">✕</button>
         </div>
+        ${effectTagsHtml}
         <div class="nb-date">${rec.savedAt}</div>
         <div class="nb-actions">
           <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
