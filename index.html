@@ -313,6 +313,7 @@
     padding: 6px 14px; border-radius: 4px; cursor: pointer;
     letter-spacing: 0.04em; transition: all 0.12s;
     border: 1px solid var(--line);
+    background: transparent; color: var(--ink-2);
   }
   .io-btn-export { background: var(--card); color: var(--ink2); }
   .io-btn-export:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink3); }
@@ -325,7 +326,7 @@
     background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
   }
   .card-check { margin-right: 2px; cursor: pointer; accent-color: var(--nb); }
-  .nb-card-selected { box-shadow: 0 0 0 2px var(--nb) inset; }
+  .nb-card-selected { box-shadow: 0 0 0 2px var(--accent) inset; }
   .fav-empty {
     text-align: center; padding: 4rem 2rem;
     color: var(--ink3); font-size: 0.85rem; line-height: 2;
@@ -382,14 +383,14 @@
   .nb-new-btn {
     font-size: 0.8rem; font-family: var(--font-serif);
     padding: 7px 18px; border-radius: 5px; cursor: pointer;
-    background: var(--nb); color: #fff; border: none;
-    letter-spacing: 0.06em; transition: opacity 0.12s;
+    background: transparent; color: var(--accent); border: 1px solid var(--accent);
+    letter-spacing: 0.06em; transition: background 0.12s;
   }
-  .nb-new-btn:hover { opacity: 0.85; }
+  .nb-new-btn:hover { background: var(--nb-bg); }
   .nb-card {
     background: var(--card);
     border: 1px solid var(--nb-line);
-    border-left: 3px solid var(--nb);
+    border-left: 3px solid var(--line);
     border-radius: 8px; margin-bottom: 28px;
     overflow: hidden; animation: fadeIn 0.2s ease;
   }
@@ -398,7 +399,7 @@
     padding: 10px 16px; display: flex; align-items: center; gap: 10px;
   }
   .nb-num {
-    font-family: var(--font-mono); font-size: 0.7rem;
+    font-family: var(--font-mono); font-size: 18px;
     color: var(--ink-3); white-space: nowrap;
   }
   .nb-name {
@@ -431,12 +432,12 @@
   .nb-body { padding: 14px 16px; }
   .nb-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
   .nb-ingredient-tag {
-    font-family: var(--font-mono); font-size: 0.7rem;
+    font-family: var(--font-mono); font-size: 13.5px;
     padding: 3px 9px; border-radius: 3px;
     background: var(--bg2); color: var(--ink2); border: 1px solid var(--line);
   }
   .nb-additive-tag {
-    font-family: var(--font-mono); font-size: 0.7rem;
+    font-family: var(--font-mono); font-size: 13.5px;
     padding: 3px 9px; border-radius: 3px;
     background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line);
   }
@@ -448,7 +449,7 @@
   }
   .nb-effect-tag + .nb-effect-tag { margin-left: 8px; }
   .nb-note {
-    font-size: 0.78rem; color: var(--ink2); line-height: 1.6;
+    font-size: 14px; color: var(--ink2); line-height: 1.75;
     margin-top: 8px; padding-top: 8px;
     border-top: 1px solid var(--nb-line);
     cursor: pointer;
@@ -469,10 +470,10 @@
   }
   .chem-oxide-row {
     display: flex; justify-content: space-between; gap: 12px;
-    font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink); padding: 1px 0;
+    font-family: var(--font-mono); font-size: 13px; color: var(--ink); padding: 1px 0;
   }
   .chem-ratio {
-    font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink); margin-top: 8px;
+    font-family: var(--font-mono); font-size: 13px; color: var(--ink); margin-top: 8px;
   }
   .chem-note {
     display: block; font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); margin-top: 2px;
@@ -513,7 +514,7 @@
   .glaze-tree li ul { border-left: 0.5px solid var(--line); margin-left: 6px; padding-top: 4px; }
   .glaze-tree-node {
     display: inline-flex; align-items: center; gap: 6px;
-    font-family: var(--font-mono); font-size: 0.72rem;
+    font-family: var(--font-mono); font-size: 13.5px;
     color: var(--ink-2);
     cursor: pointer; transition: color 0.12s;
   }
@@ -536,7 +537,7 @@
   }
   @keyframes nbCardFlash {
     0%, 100% { box-shadow: 0 0 0 2px transparent inset; }
-    30%, 70% { box-shadow: 0 0 0 2px var(--nb) inset; }
+    30%, 70% { box-shadow: 0 0 0 2px var(--accent) inset; }
   }
   .nb-card-flash { animation: nbCardFlash 1.1s ease; }
 
@@ -544,12 +545,12 @@
   .nbmodal-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(42,36,32,0.45);
-    z-index: 100; align-items: center; justify-content: center;
+    z-index: 150; align-items: center; justify-content: center;
   }
   .nbmodal-overlay.open { display: flex; }
   .nbmodal {
     background: var(--card); border-radius: 10px;
-    border: 1px solid var(--nb-line); border-top: 3px solid var(--nb);
+    border: 1px solid var(--nb-line); border-top: 3px solid var(--line);
     padding: 1.8rem; width: 420px; max-width: 94vw;
     animation: fadeIn 0.18s ease; max-height: 90vh; overflow-y: auto;
   }
@@ -558,7 +559,7 @@
   .nbmodal-row { display: grid; grid-template-columns: 100px 1fr; gap: 8px; margin-bottom: 8px; }
   .nbmodal-btns { display: flex; gap: 8px; margin-top: 1.4rem; }
   .nbmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-serif); font-size: 0.82rem; letter-spacing: 0.04em; }
-  .nbmodal-confirm { background: var(--nb); color: #fff; border: none; }
+  .nbmodal-confirm { background: var(--ink); color: var(--bg); border: none; }
   .nbmodal-confirm:hover { opacity: 0.85; }
   .nbmodal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
   .nbmodal-cancel:hover { background: var(--bg2); }
@@ -574,7 +575,7 @@
   .updmodal-overlay.open { display: flex; }
   .updmodal {
     background: var(--card); border-radius: 10px;
-    border: 1px solid var(--nb-line); border-top: 3px solid var(--nb);
+    border: 1px solid var(--nb-line); border-top: 3px solid var(--line);
     padding: 1.6rem; width: 500px; max-width: 96vw;
     animation: fadeIn 0.18s ease; max-height: 90vh; overflow-y: auto;
   }
@@ -603,7 +604,7 @@
   .updmodal-nb-select:disabled { opacity: 0.35; cursor: default; }
   .updmodal-btns { display: flex; gap: 8px; }
   .updmodal-btns button { flex: 1; padding: 9px; border-radius: 5px; cursor: pointer; font-family: var(--font-serif); font-size: 0.82rem; letter-spacing: 0.04em; }
-  .updmodal-confirm { background: var(--nb); color: #fff; border: none; }
+  .updmodal-confirm { background: var(--ink); color: var(--bg); border: none; }
   .updmodal-confirm:hover { opacity: 0.85; }
   .updmodal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
   .updmodal-cancel:hover { background: var(--bg2); }
@@ -612,7 +613,7 @@
   .modal-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(42,36,32,0.45);
-    z-index: 100; align-items: center; justify-content: center;
+    z-index: 150; align-items: center; justify-content: center;
   }
   .modal-overlay.open { display: flex; }
   .modal {
@@ -945,7 +946,7 @@
     <div id="nb-modal-add-wrap"></div>
     <button class="btn-ghost" onclick="nbModalAddAdditive()" style="font-size:0.74rem;margin-top:4px">＋ 添加剂</button>
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">备注</div>
-    <textarea id="nb-modal-note" placeholder="颜色效果、烧成温度、观察结果…" style="min-height:64px"></textarea>
+    <textarea id="nb-modal-note" placeholder="颜色效果、烧成温度、观察结果…" oninput="autoGrowTextarea(this)" style="min-height:150px"></textarea>
     <button class="btn-ghost" onclick="insertBlankLine('nb-modal-note')" style="font-size:0.74rem;margin-top:4px;color:var(--ink3)">↵ 插入空行</button>
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">烧成曲线</div>
     <select id="nb-modal-firing-curve" style="width:100%"></select>
@@ -1898,6 +1899,7 @@ function openNbModal(glazeIndex, glazeState) {
   document.getElementById('nb-modal-num').value = glazeIndex !== null ? (glazes[glazeIndex].name.replace(/号.*/, '号') || '') : '';
   document.getElementById('nb-modal-name').value = glazeIndex !== null ? glazes[glazeIndex].name : '';
   document.getElementById('nb-modal-note').value = '';
+  autoGrowTextarea(document.getElementById('nb-modal-note'));
   document.getElementById('nb-modal-firing-curve').innerHTML = firingCurveOptionsHtml(null);
   document.getElementById('nb-modal-confidence').value = '可靠';
   document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml([]);
@@ -1930,6 +1932,7 @@ function openNbModalEdit(ni) {
   document.getElementById('nb-modal-num').value = rec.num || '';
   document.getElementById('nb-modal-name').value = rec.name || '';
   document.getElementById('nb-modal-note').value = rec.note || '';
+  autoGrowTextarea(document.getElementById('nb-modal-note'));
   document.getElementById('nb-modal-firing-curve').innerHTML = firingCurveOptionsHtml(rec.firingCurveId);
   document.getElementById('nb-modal-confidence').value = rec.dataConfidence || '可靠';
   document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml(rec.effectTags);
@@ -2239,7 +2242,7 @@ function nbCardHtml(rec, ni, idPrefix) {
             : `<div class="nb-add-note">＋ 添加备注</div>`}
         </div>
         <div id="${idPrefix}note-edit-${ni}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--nb-line)">
-          <textarea id="${idPrefix}note-input-${ni}" style="width:100%;min-height:52px;font-size:0.78rem;margin-bottom:6px">${rec.note||''}</textarea>
+          <textarea id="${idPrefix}note-input-${ni}" class="nb-note-textarea" oninput="autoGrowTextarea(this)" style="width:100%;min-height:150px;font-size:0.78rem;margin-bottom:6px">${rec.note||''}</textarea>
           <div style="display:flex;gap:6px">
             <button class="nb-load-btn" style="flex:1" onclick="saveNbNote(${ni},'${idPrefix}')">保存</button>
             <button class="nb-del-btn" style="white-space:nowrap" onclick="insertBlankLine('${idPrefix}note-input-${ni}')">↵ 空行</button>
@@ -2343,7 +2346,14 @@ async function saveNbName(ni, idPrefix='nb') {
 function editNbNote(ni, idPrefix='nb') {
   document.getElementById(`${idPrefix}note-display-${ni}`).style.display='none';
   document.getElementById(`${idPrefix}note-edit-${ni}`).style.display='block';
-  document.getElementById(`${idPrefix}note-input-${ni}`).focus();
+  const ta = document.getElementById(`${idPrefix}note-input-${ni}`);
+  autoGrowTextarea(ta);
+  ta.focus();
+}
+function autoGrowTextarea(el) {
+  el.style.height = 'auto';
+  const maxH = window.innerWidth > 640 ? window.innerHeight * 0.5 : Infinity;
+  el.style.height = Math.min(el.scrollHeight, maxH) + 'px';
 }
 function cancelNbNote(ni, idPrefix='nb') {
   document.getElementById(`${idPrefix}note-display-${ni}`).style.display='block';
