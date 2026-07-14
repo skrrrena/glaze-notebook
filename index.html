@@ -314,6 +314,7 @@
     letter-spacing: 0.04em; transition: all 0.12s;
     border: 1px solid var(--line);
     background: transparent; color: var(--ink-2);
+    white-space: nowrap; flex-shrink: 0;
   }
   .io-btn-export { background: var(--card); color: var(--ink2); }
   .io-btn-export:hover { background: var(--bg2); color: var(--ink); border-color: var(--ink3); }
@@ -385,6 +386,7 @@
     padding: 7px 18px; border-radius: 5px; cursor: pointer;
     background: transparent; color: var(--accent); border: 1px solid var(--accent);
     letter-spacing: 0.06em; transition: background 0.12s;
+    white-space: nowrap; flex-shrink: 0;
   }
   .nb-new-btn:hover { background: var(--nb-bg); }
   .nb-card {
@@ -398,16 +400,18 @@
     background: var(--nb-bg); border-bottom: 1px solid var(--nb-line);
     padding: 10px 16px; display: flex; align-items: center; gap: 10px;
   }
+  .nb-head-row1 { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; }
+  .nb-head-row2 { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .nb-num {
     font-family: var(--font-mono); font-size: 18px;
     color: var(--ink-3); white-space: nowrap;
   }
   .nb-name {
-    flex: 1; font-family: var(--font-serif); font-size: 1.05rem; font-weight: 500;
+    flex: 1; min-width: 0; font-family: var(--font-serif); font-size: 1.05rem; font-weight: 500;
     color: var(--ink); letter-spacing: 0.02em;
   }
-  .nb-date { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); }
-  .nb-actions { display: flex; gap: 6px; }
+  .nb-date { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); white-space: nowrap; }
+  .nb-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .nb-load-btn {
     font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 10px; border-radius: 3px;
@@ -441,11 +445,12 @@
     padding: 3px 9px; border-radius: 3px;
     background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line);
   }
-  .nb-effect-tags { margin-left: 10px; }
+  .nb-effect-tags { margin-left: 10px; white-space: nowrap; }
   .nb-effect-tag {
     font-family: var(--font-serif);
     background: transparent; border: none; border-radius: 0; padding: 0;
     color: var(--accent); font-size: 0.85em; letter-spacing: 0.05em;
+    white-space: nowrap;
   }
   .nb-effect-tag + .nb-effect-tag { margin-left: 8px; }
   .nb-note {
@@ -759,6 +764,22 @@
   @media (max-width: 700px) {
     .calc-layout { grid-template-columns: 1fr; }
     .panel-left { border-right: none; border-bottom: 1px solid var(--line); }
+  }
+
+  @media (max-width: 768px) {
+    header { padding: 24px 16px 16px; }
+    .tabs { padding: 10px 16px 14px; gap: 16px; overflow-x: auto; white-space: nowrap; }
+    .tab-btn { flex-shrink: 0; }
+    .fav-panel, .nb-panel { padding: 1rem; }
+    .panel-left, .panel-right { padding: 1.2rem; }
+
+    .nb-card-head { flex-direction: column; align-items: stretch; gap: 6px; }
+    .nb-head-row2 { justify-content: space-between; }
+
+    .nb-toolbar, .fav-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+    .nb-toolbar-right, .fav-toolbar-right { margin-left: 0; overflow-x: auto; }
+    .batch-bar { flex-wrap: wrap; }
+    .batch-bar .nb-toolbar-right { margin-left: 0; width: 100%; justify-content: flex-end; }
   }
 </style>
 </head>
@@ -2221,20 +2242,24 @@ function nbCardHtml(rec, ni, idPrefix) {
   return `
     <div class="nb-card ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
       <div class="nb-card-head">
-        ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
-        <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
-        ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
-        <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
-        <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
-          <input type="text" id="${idPrefix}name-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
-          <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
-          <button class="nb-del-btn" onclick="cancelNbName(${ni},'${idPrefix}')">✕</button>
+        <div class="nb-head-row1">
+          ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
+          <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
+          ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
+          <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
+          <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
+            <input type="text" id="${idPrefix}name-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
+            <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
+            <button class="nb-del-btn" onclick="cancelNbName(${ni},'${idPrefix}')">✕</button>
+          </div>
         </div>
-        <div class="nb-date">${rec.savedAt}</div>
-        <div class="nb-actions">
-          <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
-          <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
-          <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
+        <div class="nb-head-row2">
+          <div class="nb-date">${rec.savedAt}</div>
+          <div class="nb-actions">
+            <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
+            <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
+            <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
+          </div>
         </div>
       </div>
       <div class="nb-body">
