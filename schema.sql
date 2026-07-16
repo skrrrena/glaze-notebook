@@ -178,3 +178,9 @@ create policy "photos delete own" on storage.objects for delete
 
 -- 路径约定：{user_id}/notebook/{record_id}/{uuid}.jpg
 --        或 {user_id}/favourites/{record_id}/{uuid}.jpg
+
+-- ── notebook_entries 追加：釉料分享卡（独立于配方本正文，仅供导出分享用）──
+alter table public.notebook_entries add column if not exists share_image jsonb; -- {path, caption} 单张，同 photos[] 条目结构；可复用 photos[] 里已有的 path
+alter table public.notebook_entries add column if not exists share_note text not null default ''; -- 分享用心得，独立于 note（私人笔记）
+alter table public.notebook_entries add column if not exists share_english_name text not null default ''; -- 手动填写，不做拼音自动转换；留空则分享卡不渲染该行
+alter table public.notebook_entries add column if not exists share_signature jsonb; -- {author, year, show}

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>釉料配方计算器</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
   /* 标本目录 — 色彩沉默：釉色照片是唯一色彩来源，--accent 只用于星标/note/当前记录高亮/效果标签 */
   :root {
@@ -578,6 +579,94 @@
   .nb-additive-editor { margin-top: 8px; }
   .nb-additive-edit-row { display: grid; grid-template-columns: 1fr 90px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
 
+  /* share card modal */
+  .sharemodal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(42,36,32,0.45);
+    z-index: 150; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .sharemodal-overlay.open { display: flex; }
+  .sharemodal {
+    background: var(--card); border-radius: 10px;
+    border: 1px solid var(--nb-line); border-top: 3px solid var(--line);
+    padding: 1.8rem; width: 900px; max-width: 96vw;
+    animation: fadeIn 0.18s ease; max-height: 92vh; overflow-y: auto;
+  }
+  .sharemodal h3 { font-size: 1rem; font-weight: 400; letter-spacing: 0.06em; margin-bottom: 1.2rem; color: var(--nb); }
+  .sharemodal-body { display: flex; gap: 28px; align-items: flex-start; }
+  .sharemodal-preview { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; width: 400px; max-width: 100%; }
+  .sharemodal-format-tabs { display: flex; gap: 6px; align-self: flex-start; }
+  .sharemodal-format-btn {
+    background: none; border: 1px solid var(--line); color: var(--ink3);
+    border-radius: 4px; padding: 4px 10px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.04em;
+  }
+  .sharemodal-format-btn.active { border-color: var(--accent); color: var(--accent); }
+  .sharemodal-preview-scale { max-width: 100%; overflow-x: auto; }
+  .sharemodal-export-btn {
+    width: 100%; padding: 9px; border-radius: 5px; cursor: pointer;
+    background: var(--ink); color: var(--bg); border: none;
+    font-family: var(--font-serif); font-size: 0.82rem; letter-spacing: 0.04em;
+  }
+  .sharemodal-export-btn:hover { opacity: 0.85; }
+  .sharemodal-form { flex: 1; min-width: 280px; }
+  .sharemodal-form .field-label { margin-top: 10px; margin-bottom: 4px; font-size: 0.72rem; color: var(--ink3); }
+  .sharemodal-hero-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sharemodal-hero-thumb { width: 52px; height: 52px; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid transparent; padding: 0; background: var(--bg2); }
+  .sharemodal-hero-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sharemodal-hero-thumb.active { border-color: var(--accent); }
+  .sharemodal-hero-upload { width: 52px; height: 52px; border-radius: 4px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink3); font-size: 18px; background: none; }
+  .sharemodal-hero-remove { width: 52px; height: 52px; border-radius: 4px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink3); font-size: 11px; background: none; }
+  .sharemodal-sig-row { display: flex; gap: 8px; }
+  .sharemodal-sig-row input[type=text] { flex: 1; }
+  .sharemodal-sig-toggle { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; color: var(--ink3); margin-top: 10px; cursor: pointer; }
+  .sharemodal-sig-toggle input { cursor: pointer; }
+
+  @media (max-width: 768px) {
+    .sharemodal-body { flex-direction: column; align-items: stretch; }
+    .sharemodal-preview { align-self: center; }
+  }
+
+  /* the actual share-card visual (rendered into preview + captured by html2canvas for export) */
+  .share-card {
+    width: 400px; min-height: 720px;
+    background: var(--paper-raised);
+    border: 0.5px solid var(--line);
+    font-family: var(--font-sans);
+    color: var(--ink);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .share-card.share-card-square { width: 480px; height: 480px; min-height: 0; }
+  .share-hero { position: relative; width: 100%; height: 460px; background: var(--paper-sunk); overflow: hidden; flex-shrink: 0; }
+  .share-card-square .share-hero { height: 100%; }
+  .share-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .share-hero-empty {
+    display: flex; align-items: center; justify-content: center; height: 100%;
+    color: var(--ink-4); font-size: 12px; font-family: var(--font-mono);
+  }
+  .share-hero-gradient {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 58%;
+    background: linear-gradient(to top, rgba(20,17,13,0.85), rgba(20,17,13,0));
+    pointer-events: none;
+  }
+  .share-hero-overlay { position: absolute; left: 22px; right: 22px; bottom: 18px; color: #F4F1EA; }
+  .share-hero-num { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.08em; opacity: 0.85; }
+  .share-hero-name { font-family: var(--font-serif); font-size: 26px; line-height: 1.25; margin-top: 2px; }
+  .share-hero-en { font-size: 12.5px; letter-spacing: 0.04em; opacity: 0.8; margin-top: 3px; }
+  .share-hero-tags { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 6px 10px; }
+  .share-hero-effect-tag { color: var(--accent); font-size: 12px; letter-spacing: 0.05em; }
+  .share-hero-process-tag { font-family: var(--font-mono); font-size: 11px; opacity: 0.75; letter-spacing: 0.06em; }
+  .share-body { padding: 20px 22px 24px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+  .share-sect-label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; color: var(--ink-4); margin-bottom: 6px; }
+  .share-tags { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+  .share-effect-tag { color: var(--accent); font-size: 12px; letter-spacing: 0.05em; }
+  .share-process-tag { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.06em; }
+  .share-formula-row { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); line-height: 1.8; }
+  .share-note { font-size: 13px; line-height: 1.8; color: var(--ink-2); white-space: pre-wrap; border-top: 0.5px solid var(--line); padding-top: 12px; }
+  .share-signature { margin-top: auto; padding-top: 14px; text-align: right; font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); letter-spacing: 0.04em; }
+
   /* update-to-notebook picker modal */
   .updmodal-overlay {
     display: none; position: fixed; inset: 0;
@@ -1024,6 +1113,44 @@
   </div>
 </div>
 
+<!-- share card modal -->
+<div class="sharemodal-overlay" id="share-modal" onclick="closeShareModal(event)">
+  <div class="sharemodal">
+    <h3>生成分享卡</h3>
+    <div class="sharemodal-body">
+      <div class="sharemodal-preview">
+        <div class="sharemodal-format-tabs">
+          <button class="sharemodal-format-btn active" id="share-format-tab-vertical" onclick="setShareFormat('vertical')">竖版</button>
+          <button class="sharemodal-format-btn" id="share-format-tab-square" onclick="setShareFormat('square')">方形（Instagram）</button>
+        </div>
+        <div class="sharemodal-preview-scale">
+          <div class="share-card" id="share-card-preview"></div>
+        </div>
+        <button class="sharemodal-export-btn" onclick="exportShareCard()">↓ 导出 PNG</button>
+      </div>
+      <div class="sharemodal-form">
+        <div class="field-label">封面图</div>
+        <div class="sharemodal-hero-picker" id="share-hero-picker"></div>
+        <div class="field-label">英文名（选填，留空则卡片不显示这行）</div>
+        <input type="text" id="share-modal-en-name" placeholder="如：Crystalline Blue" oninput="renderShareCardPreview()">
+        <div class="field-label">心得（用于分享卡，独立于配方本备注）</div>
+        <textarea id="share-modal-note" placeholder="写给看到这张卡片的人…" oninput="autoGrowTextarea(this);renderShareCardPreview()" style="min-height:90px"></textarea>
+        <div class="field-label">署名</div>
+        <div class="sharemodal-sig-row">
+          <input type="text" id="share-modal-sig-author" placeholder="作者" oninput="renderShareCardPreview()">
+          <input type="text" id="share-modal-sig-year" placeholder="年份" style="max-width:90px" oninput="renderShareCardPreview()">
+        </div>
+        <label class="sharemodal-sig-toggle"><input type="checkbox" id="share-modal-sig-show" checked onchange="renderShareCardPreview()"> 在卡片上显示署名</label>
+        <div class="nbmodal-btns" style="margin-top:20px">
+          <button class="nbmodal-cancel" onclick="closeShareModal()">取消</button>
+          <button class="nbmodal-confirm" onclick="saveShareCardFields()">保存到记录</button>
+        </div>
+        <div id="share-modal-save-status" style="margin-top:8px;font-size:0.72rem;color:var(--ink3);min-height:1.2em"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- update-to-notebook picker modal -->
 <div class="updmodal-overlay" id="upd-modal" onclick="closeUpdModal(event)">
   <div class="updmodal">
@@ -1054,6 +1181,7 @@
 </div>
 <!-- hidden photo inputs -->
 <input type="file" id="nb-photo-input" accept="image/*" multiple style="display:none" onchange="handleNbPhotoUpload(this)">
+<input type="file" id="share-hero-input" accept="image/*" style="display:none" onchange="handleShareHeroUpload(this)">
 
 <script>
 // ── Supabase client ──
@@ -1069,6 +1197,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 const PHOTO_BUCKET = 'glaze-photos';
 const PHOTO_SIZE = 800; // max dimension px for resizing
+const SHARE_IMAGE_SIZE = 1600; // hero image needs to stay sharp under 2x/3x PNG export of a ~400px-wide card
 let currentUserId = null;
 
 // ── 深浅色手动切换 ──
@@ -1191,6 +1320,10 @@ function rowToNotebook(row) {
     dataConfidence: row.data_confidence || '可靠',
     effectTags: row.effect_tags || [],
     starred: !!row.starred,
+    shareImage: row.share_image ? {...row.share_image} : null,
+    shareNote: row.share_note || '',
+    shareEnglishName: row.share_english_name || '',
+    shareSignature: row.share_signature || null,
   };
 }
 function rowToHistory(row) {
@@ -1258,13 +1391,19 @@ async function boot() {
 // ── photo storage (Supabase Storage) ──
 async function resolvePhotoUrls(records) {
   const allPaths = [];
-  records.forEach(r => (r.photos||[]).forEach(p => { if(p.path) allPaths.push(p.path); }));
+  records.forEach(r => {
+    (r.photos||[]).forEach(p => { if(p.path) allPaths.push(p.path); });
+    if(r.shareImage?.path) allPaths.push(r.shareImage.path);
+  });
   if(!allPaths.length) return;
   const { data, error } = await sb.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600);
   if(error || !data) return;
   const urlMap = {};
   data.forEach(d => { if(d.signedUrl) urlMap[d.path] = d.signedUrl; });
-  records.forEach(r => (r.photos||[]).forEach(p => { if(p.path) p.src = urlMap[p.path] || ''; }));
+  records.forEach(r => {
+    (r.photos||[]).forEach(p => { if(p.path) p.src = urlMap[p.path] || ''; });
+    if(r.shareImage?.path) r.shareImage.src = urlMap[r.shareImage.path] || '';
+  });
 }
 
 function _blobFromDataURL(dataURL) {
@@ -1412,6 +1551,224 @@ async function handleNbPhotoUpload(input) {
 }
 async function deleteNbPhoto(id, idx) {
   await deletePhoto('notebook_entries', id, idx, renderNbAndFav);
+}
+
+// ── share card hero image ──
+// shareImage.path can point at a freshly-uploaded image OR simply reuse an existing
+// photos[i].path (see pickShareHeroFromPhoto) — so unlike deletePhoto, removing/replacing
+// the hero never deletes the underlying storage object, since another field (photos[])
+// may still be the real owner of that path.
+async function saveShareImageField(id, shareImage) {
+  await sb.from('notebook_entries').update({share_image: shareImage}).eq('id', id);
+}
+
+let shareHeroTargetId = null;
+function triggerShareHeroUpload(id) {
+  shareHeroTargetId = id;
+  const input = document.getElementById('share-hero-input');
+  input.value = '';
+  input.click();
+}
+async function handleShareHeroUpload(input) {
+  if(!shareHeroTargetId || !input.files.length) return;
+  const record = _findRecord('notebook_entries', shareHeroTargetId);
+  if(!record) return;
+  const file = input.files[0];
+  if(!file.type.startsWith('image/')) return;
+  const dataURL = await resizeAndEncode(file, SHARE_IMAGE_SIZE);
+  const path = `${currentUserId}/notebook/${record.id}/share-${crypto.randomUUID()}.jpg`;
+  const { error } = await sb.storage.from(PHOTO_BUCKET).upload(path, _blobFromDataURL(dataURL), {contentType:'image/jpeg'});
+  if(error) { alert('图片上传失败：'+error.message); return; }
+  record.shareImage = {path, caption:''};
+  await resolvePhotoUrls([record]);
+  await saveShareImageField(record.id, record.shareImage);
+  renderShareCardPreview();
+}
+async function pickShareHeroFromPhoto(id, photoIdx) {
+  const record = _findRecord('notebook_entries', id);
+  const photo = record?.photos?.[photoIdx];
+  if(!record || !photo) return;
+  record.shareImage = {path: photo.path, caption: photo.caption||'', src: photo.src};
+  await saveShareImageField(record.id, {path: photo.path, caption: photo.caption||''});
+  renderShareCardPreview();
+}
+async function removeShareHero(id) {
+  const record = _findRecord('notebook_entries', id);
+  if(!record) return;
+  record.shareImage = null;
+  await saveShareImageField(id, null);
+  renderShareCardPreview();
+}
+
+// ── share card modal ──
+let shareModalRecordId = null;
+let shareCardFormat = 'vertical';
+
+function openShareModal(ni) {
+  const rec = notebook[ni];
+  if(!rec) return;
+  shareModalRecordId = rec.id;
+  shareCardFormat = 'vertical';
+  document.getElementById('share-format-tab-vertical').classList.add('active');
+  document.getElementById('share-format-tab-square').classList.remove('active');
+  document.getElementById('share-modal-en-name').value = rec.shareEnglishName || '';
+  document.getElementById('share-modal-note').value = rec.shareNote || '';
+  const sig = rec.shareSignature || {};
+  document.getElementById('share-modal-sig-author').value = sig.author || '';
+  document.getElementById('share-modal-sig-year').value = sig.year || '';
+  document.getElementById('share-modal-sig-show').checked = sig.show !== false;
+  document.getElementById('share-modal-save-status').textContent = '';
+  autoGrowTextarea(document.getElementById('share-modal-note'));
+  renderShareCardPreview();
+  document.getElementById('share-modal').classList.add('open');
+}
+
+function closeShareModal(e) {
+  if(!e || e.target === document.getElementById('share-modal')) {
+    document.getElementById('share-modal').classList.remove('open');
+    shareModalRecordId = null;
+  }
+}
+
+function setShareFormat(fmt) {
+  shareCardFormat = fmt;
+  document.getElementById('share-format-tab-vertical').classList.toggle('active', fmt==='vertical');
+  document.getElementById('share-format-tab-square').classList.toggle('active', fmt==='square');
+  renderShareCardPreview();
+}
+
+function renderShareHeroPicker(rec) {
+  const wrap = document.getElementById('share-hero-picker');
+  const photos = rec.photos || [];
+  const currentPath = rec.shareImage?.path || null;
+  wrap.innerHTML = photos.map((p,i) => `
+    <button class="sharemodal-hero-thumb ${p.path===currentPath?'active':''}" onclick="pickShareHeroFromPhoto('${rec.id}',${i})" title="设为封面"><img src="${p.src||''}"></button>
+  `).join('')
+  + `<button class="sharemodal-hero-upload" onclick="triggerShareHeroUpload('${rec.id}')" title="上传新图">＋</button>`
+  + (rec.shareImage ? `<button class="sharemodal-hero-remove" onclick="removeShareHero('${rec.id}')" title="移除封面">移除</button>` : '');
+}
+
+// Process tag deliberately omits any clay-body text: no structured field for the clay
+// body exists in the schema, so only the firing curve name (a real, sourced value) is shown.
+function buildShareCardInnerHtml(rec, format) {
+  const englishName = document.getElementById('share-modal-en-name').value.trim();
+  const note = document.getElementById('share-modal-note').value.trim();
+  const sigAuthor = document.getElementById('share-modal-sig-author').value.trim();
+  const sigYear = document.getElementById('share-modal-sig-year').value.trim();
+  const sigShow = document.getElementById('share-modal-sig-show').checked;
+
+  const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
+  const effectTags = rec.effectTags || [];
+  const heroHtml = rec.shareImage?.src
+    ? `<img src="${rec.shareImage.src}" crossorigin="anonymous">`
+    : `<div class="share-hero-empty">未设置封面图</div>`;
+  const effectClass = format==='square' ? 'share-hero-effect-tag' : 'share-effect-tag';
+  const processClass = format==='square' ? 'share-hero-process-tag' : 'share-process-tag';
+  const tagsHtml = (effectTags.length || fc)
+    ? `${effectTags.map(t=>`<span class="${effectClass}">◇ ${t}</span>`).join('')}${fc ? `<span class="${processClass}">${fc.name}</span>` : ''}`
+    : '';
+  const sigHtml = sigShow && (sigAuthor || sigYear)
+    ? `<div class="share-signature">— ${[sigAuthor,sigYear].filter(Boolean).join(' · ')}</div>` : '';
+
+  if(format === 'square') {
+    return `
+      <div class="share-hero">
+        ${heroHtml}
+        <div class="share-hero-gradient"></div>
+        <div class="share-hero-overlay">
+          ${rec.num ? `<div class="share-hero-num">${rec.num}</div>` : ''}
+          <div class="share-hero-name">${rec.name}</div>
+          ${englishName ? `<div class="share-hero-en">${englishName}</div>` : ''}
+          ${tagsHtml ? `<div class="share-hero-tags">${tagsHtml}</div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  const baseStr = (rec.baseIngredients||[]).map(i=>`${i.name} ${i.parts}`).join('　');
+  const addStr = Object.entries(rec.additives||{}).map(([name,pct])=>`${name} +${(+pct).toFixed(3)}%`).join('　');
+
+  return `
+    <div class="share-hero">
+      ${heroHtml}
+      <div class="share-hero-gradient"></div>
+      <div class="share-hero-overlay">
+        ${rec.num ? `<div class="share-hero-num">${rec.num}</div>` : ''}
+        <div class="share-hero-name">${rec.name}</div>
+        ${englishName ? `<div class="share-hero-en">${englishName}</div>` : ''}
+      </div>
+    </div>
+    <div class="share-body">
+      ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
+      <div>
+        <div class="share-sect-label">配方</div>
+        <div class="share-formula-row">${baseStr}</div>
+        ${addStr ? `<div class="share-formula-row">${addStr}</div>` : ''}
+      </div>
+      ${note ? `<div class="share-note">${note}</div>` : ''}
+      ${sigHtml}
+    </div>`;
+}
+
+function renderShareCardPreview() {
+  if(!shareModalRecordId) return;
+  const rec = _findRecord('notebook_entries', shareModalRecordId);
+  if(!rec) return;
+  const el = document.getElementById('share-card-preview');
+  el.className = 'share-card' + (shareCardFormat==='square' ? ' share-card-square' : '');
+  el.innerHTML = buildShareCardInnerHtml(rec, shareCardFormat);
+  renderShareHeroPicker(rec);
+}
+
+async function saveShareCardFields() {
+  if(!shareModalRecordId) return;
+  const rec = _findRecord('notebook_entries', shareModalRecordId);
+  if(!rec) return;
+  const englishName = document.getElementById('share-modal-en-name').value.trim();
+  const note = document.getElementById('share-modal-note').value.trim();
+  const sigAuthor = document.getElementById('share-modal-sig-author').value.trim();
+  const sigYear = document.getElementById('share-modal-sig-year').value.trim();
+  const sigShow = document.getElementById('share-modal-sig-show').checked;
+  const signature = (sigAuthor || sigYear) ? {author: sigAuthor, year: sigYear, show: sigShow} : null;
+
+  const { error } = await sb.from('notebook_entries')
+    .update({ share_english_name: englishName, share_note: note, share_signature: signature })
+    .eq('id', rec.id);
+  const statusEl = document.getElementById('share-modal-save-status');
+  if(error) { statusEl.textContent = '保存失败：'+error.message; statusEl.style.color = 'var(--danger)'; return; }
+  rec.shareEnglishName = englishName;
+  rec.shareNote = note;
+  rec.shareSignature = signature;
+  statusEl.textContent = '已保存 ✓';
+  statusEl.style.color = 'var(--ink3)';
+}
+
+async function exportShareCard() {
+  if(!shareModalRecordId) return;
+  if(typeof html2canvas === 'undefined') { alert('导出功能加载失败，请检查网络连接后重试'); return; }
+  const rec = _findRecord('notebook_entries', shareModalRecordId);
+  if(!rec) return;
+  const el = document.getElementById('share-card-preview');
+  const btn = document.querySelector('.sharemodal-export-btn');
+  const originalText = btn.textContent;
+  btn.textContent = '生成中…'; btn.disabled = true;
+  try {
+    if(document.fonts && document.fonts.ready) await document.fonts.ready;
+    const canvas = await html2canvas(el, { scale: 3, useCORS: true, backgroundColor: null });
+    const label = (rec.num || rec.name || 'share').replace(/[\\/:*?"<>|\s]+/g, '_');
+    const filename = `${label}-分享卡-${shareCardFormat==='square'?'方形':'竖版'}.png`;
+    canvas.toBlob(blob => {
+      if(!blob) { alert('导出失败，请重试'); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  } catch(err) {
+    alert('导出失败：'+(err?.message||err));
+  } finally {
+    btn.textContent = originalText; btn.disabled = false;
+  }
 }
 
 // global registry so onclick handlers can reference photos safely
@@ -2321,6 +2678,7 @@ function nbCardHtml(rec, ni, idPrefix) {
         </div>
         <div class="nb-actions" id="${idPrefix}-actions-${ni}">
           <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
+          <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
           <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
           <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
         </div>
