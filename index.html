@@ -639,9 +639,16 @@
     overflow: hidden;
   }
   .share-card.share-card-square { width: 480px; height: 480px; min-height: 0; }
-  .share-hero { position: relative; width: 100%; height: 460px; background: var(--paper-sunk); overflow: hidden; flex-shrink: 0; }
+  /* height is unset here on purpose: vertical hero height is set inline per-image to match
+     its natural aspect ratio (see renderShareCardPreview), so no cropping ever happens.
+     300px only applies before that JS runs (empty-cover state) or for the square format below. */
+  .share-hero { position: relative; width: 100%; height: 300px; background: var(--paper-sunk); overflow: hidden; flex-shrink: 0; }
   .share-card-square .share-hero { height: 100%; }
-  .share-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* background-image + background-size:cover instead of <img object-fit>: html2canvas's
+     object-fit support on <img> is unreliable and silently stretches the source image in the
+     exported PNG even though the live DOM preview looks correct; background-size is captured
+     correctly. Square format still crops to fill (by design, it's a fixed 1:1 Instagram post). */
+  .share-hero-img { width: 100%; height: 100%; background-size: cover; background-position: center; }
   .share-hero-empty {
     display: flex; align-items: center; justify-content: center; height: 100%;
     color: var(--ink-4); font-size: 12px; font-family: var(--font-mono);
@@ -1648,9 +1655,27 @@ function renderShareHeroPicker(rec) {
   + (rec.shareImage ? `<button class="sharemodal-hero-remove" onclick="removeShareHero('${rec.id}')" title="移除封面">移除</button>` : '');
 }
 
+// image-natural-dimension cache, keyed by src: avoids re-probing the same photo on every
+// keystroke in the modal (renderShareCardPreview runs on every field oninput)
+const _shareImgDimsCache = new Map();
+function getImageDims(src) {
+  if(_shareImgDimsCache.has(src)) return _shareImgDimsCache.get(src);
+  const p = new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve({w: img.naturalWidth, h: img.naturalHeight});
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+  _shareImgDimsCache.set(src, p);
+  return p;
+}
+
 // Process tag deliberately omits any clay-body text: no structured field for the clay
 // body exists in the schema, so only the firing curve name (a real, sourced value) is shown.
-function buildShareCardInnerHtml(rec, format) {
+// heroHeightPx: precomputed vertical-format hero height matching the photo's natural aspect
+// ratio (null while still loading, or for the square format where the hero is always 1:1).
+function buildShareCardInnerHtml(rec, format, heroHeightPx) {
   const englishName = document.getElementById('share-modal-en-name').value.trim();
   const note = document.getElementById('share-modal-note').value.trim();
   const sigAuthor = document.getElementById('share-modal-sig-author').value.trim();
@@ -1660,8 +1685,9 @@ function buildShareCardInnerHtml(rec, format) {
   const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
   const effectTags = rec.effectTags || [];
   const heroHtml = rec.shareImage?.src
-    ? `<img src="${rec.shareImage.src}" crossorigin="anonymous">`
+    ? `<div class="share-hero-img" style="background-image:url('${rec.shareImage.src.replace(/'/g, "%27")}')"></div>`
     : `<div class="share-hero-empty">未设置封面图</div>`;
+  const heroStyle = (format !== 'square' && heroHeightPx) ? ` style="height:${heroHeightPx}px"` : '';
   const effectClass = format==='square' ? 'share-hero-effect-tag' : 'share-effect-tag';
   const processClass = format==='square' ? 'share-hero-process-tag' : 'share-process-tag';
   const tagsHtml = (effectTags.length || fc)
@@ -1688,7 +1714,7 @@ function buildShareCardInnerHtml(rec, format) {
   const addStr = Object.entries(rec.additives||{}).map(([name,pct])=>`${name} +${(+pct).toFixed(3)}%`).join('　');
 
   return `
-    <div class="share-hero">
+    <div class="share-hero"${heroStyle}>
       ${heroHtml}
       <div class="share-hero-gradient"></div>
       <div class="share-hero-overlay">
@@ -1709,13 +1735,25 @@ function buildShareCardInnerHtml(rec, format) {
     </div>`;
 }
 
-function renderShareCardPreview() {
+async function renderShareCardPreview() {
   if(!shareModalRecordId) return;
   const rec = _findRecord('notebook_entries', shareModalRecordId);
   if(!rec) return;
+  const recId = rec.id;
+  const format = shareCardFormat;
   const el = document.getElementById('share-card-preview');
-  el.className = 'share-card' + (shareCardFormat==='square' ? ' share-card-square' : '');
-  el.innerHTML = buildShareCardInnerHtml(rec, shareCardFormat);
+  el.className = 'share-card' + (format==='square' ? ' share-card-square' : '');
+
+  // vertical hero height is derived from the photo's real aspect ratio so it's never cropped;
+  // await this before touching the DOM, then re-check nothing changed underneath us
+  let heroHeightPx = null;
+  if(format !== 'square' && rec.shareImage?.src) {
+    const dims = await getImageDims(rec.shareImage.src);
+    if(shareModalRecordId !== recId || shareCardFormat !== format) return;
+    if(dims && dims.w) heroHeightPx = Math.round(Math.min(640, Math.max(280, 400 * dims.h / dims.w)));
+  }
+
+  el.innerHTML = buildShareCardInnerHtml(rec, format, heroHeightPx);
   renderShareHeroPicker(rec);
 }
 
@@ -1752,6 +1790,9 @@ async function exportShareCard() {
   const originalText = btn.textContent;
   btn.textContent = '生成中…'; btn.disabled = true;
   try {
+    // guarantee the exported PNG reflects the final aspect-ratio-correct hero height,
+    // not a stale/empty-state render from before the cover photo's dimensions resolved
+    await renderShareCardPreview();
     if(document.fonts && document.fonts.ready) await document.fonts.ready;
     const canvas = await html2canvas(el, { scale: 3, useCORS: true, backgroundColor: null });
     const label = (rec.num || rec.name || 'share').replace(/[\\/:*?"<>|\s]+/g, '_');
