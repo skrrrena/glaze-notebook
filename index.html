@@ -648,7 +648,11 @@
      object-fit support on <img> is unreliable and silently stretches the source image in the
      exported PNG even though the live DOM preview looks correct; background-size is captured
      correctly. Square format still crops to fill (by design, it's a fixed 1:1 Instagram post). */
-  .share-hero-img { width: 100%; height: 100%; background-size: cover; background-position: center; }
+  /* background-repeat must be explicit: html2canvas replicates the CSS default
+     (repeat) when drawing background-image + background-size:cover, and rounding
+     error at the tile boundary shows up as a hairline seam through to the container's
+     background color — this is what reads as a horizontal black line down the middle. */
+  .share-hero-img { width: 100%; height: 100%; background-size: cover; background-position: center; background-repeat: no-repeat; }
   .share-hero-empty {
     display: flex; align-items: center; justify-content: center; height: 100%;
     color: var(--ink-4); font-size: 12px; font-family: var(--font-mono);
