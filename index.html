@@ -657,9 +657,14 @@
     display: flex; align-items: center; justify-content: center; height: 100%;
     color: var(--ink-4); font-size: 12px; font-family: var(--font-mono);
   }
+  /* inset:0 (full hero box) rather than a separate bottom:0;height:58% box: that box's own
+     height was a fractional pixel value (58% of an odd container height), and html2canvas can
+     render a hairline seam at a fractional-height element's own edge even when its content
+     there is fully transparent. Stopping the gradient at 58% via a color-stop instead keeps
+     the visual result identical without introducing a second box boundary inside the image. */
   .share-hero-gradient {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 58%;
-    background: linear-gradient(to top, rgba(20,17,13,0.85), rgba(20,17,13,0));
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(20,17,13,0.85) 0%, rgba(20,17,13,0) 58%);
     pointer-events: none;
   }
   .share-hero-overlay { position: absolute; left: 22px; right: 22px; bottom: 18px; color: #F4F1EA; }
@@ -1679,7 +1684,7 @@ function getImageDims(src) {
 // body exists in the schema, so only the firing curve name (a real, sourced value) is shown.
 // heroHeightPx: precomputed vertical-format hero height matching the photo's natural aspect
 // ratio (null while still loading, or for the square format where the hero is always 1:1).
-function buildShareCardInnerHtml(rec, format, heroHeightPx) {
+function buildShareCardInnerHtml(rec, format, heroHeightPx, heroImgStyle) {
   const englishName = document.getElementById('share-modal-en-name').value.trim();
   const note = document.getElementById('share-modal-note').value.trim();
   const sigAuthor = document.getElementById('share-modal-sig-author').value.trim();
@@ -1688,8 +1693,12 @@ function buildShareCardInnerHtml(rec, format, heroHeightPx) {
 
   const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
   const effectTags = rec.effectTags || [];
+  // background-size/position are pinned to integer pixels (computed in renderShareCardPreview)
+  // instead of relying on the CSS cover/center shorthand: html2canvas reimplements cover-crop
+  // math independently of the live browser, and fractional results there are a known source of
+  // a 1px seam through the exported image.
   const heroHtml = rec.shareImage?.src
-    ? `<div class="share-hero-img" style="background-image:url('${rec.shareImage.src.replace(/'/g, "%27")}')"></div>`
+    ? `<div class="share-hero-img" style="background-image:url('${rec.shareImage.src.replace(/'/g, "%27")}');${heroImgStyle||''}"></div>`
     : `<div class="share-hero-empty">未设置封面图</div>`;
   const heroStyle = (format !== 'square' && heroHeightPx) ? ` style="height:${heroHeightPx}px"` : '';
   const effectClass = format==='square' ? 'share-hero-effect-tag' : 'share-effect-tag';
@@ -1749,15 +1758,28 @@ async function renderShareCardPreview() {
   el.className = 'share-card' + (format==='square' ? ' share-card-square' : '');
 
   // vertical hero height is derived from the photo's real aspect ratio so it's never cropped;
-  // await this before touching the DOM, then re-check nothing changed underneath us
+  // heroImgStyle pins background-size/position to integer pixels so html2canvas's cover-crop
+  // math can't diverge from the live browser's — await this before touching the DOM, then
+  // re-check nothing changed underneath us
   let heroHeightPx = null;
-  if(format !== 'square' && rec.shareImage?.src) {
+  let heroImgStyle = '';
+  if(rec.shareImage?.src) {
     const dims = await getImageDims(rec.shareImage.src);
     if(shareModalRecordId !== recId || shareCardFormat !== format) return;
-    if(dims && dims.w) heroHeightPx = Math.round(Math.min(640, Math.max(280, 400 * dims.h / dims.w)));
+    if(dims && dims.w && dims.h) {
+      if(format !== 'square') heroHeightPx = Math.round(Math.min(640, Math.max(280, 400 * dims.h / dims.w)));
+      const boxW = format === 'square' ? 480 : 400;
+      const boxH = format === 'square' ? 480 : heroHeightPx;
+      const scale = Math.max(boxW / dims.w, boxH / dims.h);
+      const rw = Math.round(dims.w * scale);
+      const rh = Math.round(dims.h * scale);
+      const ox = Math.round((boxW - rw) / 2);
+      const oy = Math.round((boxH - rh) / 2);
+      heroImgStyle = `background-size:${rw}px ${rh}px;background-position:${ox}px ${oy}px;`;
+    }
   }
 
-  el.innerHTML = buildShareCardInnerHtml(rec, format, heroHeightPx);
+  el.innerHTML = buildShareCardInnerHtml(rec, format, heroHeightPx, heroImgStyle);
   renderShareHeroPicker(rec);
 }
 
