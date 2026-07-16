@@ -395,6 +395,7 @@
     border-left: 3px solid var(--line);
     border-radius: 8px; margin-bottom: 28px;
     overflow: hidden; animation: fadeIn 0.2s ease;
+    position: relative;
   }
   .nb-card-head {
     background: var(--nb-bg); border-bottom: 1px solid var(--nb-line);
@@ -412,6 +413,11 @@
   }
   .nb-date { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); white-space: nowrap; }
   .nb-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .nb-menu-trigger {
+    display: none; background: none; border: 1px solid var(--line);
+    color: var(--ink-3); border-radius: 4px; padding: 2px 8px;
+    cursor: pointer; font-size: 14px; line-height: 1.4; flex-shrink: 0;
+  }
   .nb-load-btn {
     font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 10px; border-radius: 3px;
@@ -675,6 +681,12 @@
     opacity: 0; transition: opacity 0.12s;
   }
   .photo-thumb-wrap:hover .photo-del-btn { opacity: 1; }
+  .photo-gallery-toggle {
+    display: none; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: 2px 8px; cursor: pointer; margin-bottom: 6px;
+  }
+  .photo-gallery.pg-editing .photo-gallery-toggle { color: var(--accent); border-color: var(--accent); }
   .photo-caption-input {
     width: 84px; font-size: 0.65rem; font-family: var(--font-mono);
     padding: 2px 5px; border-radius: 3px;
@@ -773,13 +785,37 @@
     .fav-panel, .nb-panel { padding: 1rem; }
     .panel-left, .panel-right { padding: 1.2rem; }
 
-    .nb-card-head { flex-direction: column; align-items: stretch; gap: 6px; }
-    .nb-head-row2 { justify-content: space-between; }
+    .nb-menu-trigger { display: inline-flex; align-items: center; }
+    .nb-head-row2 {
+      position: absolute; left: 16px; bottom: 8px;
+      gap: 0;
+    }
+    .nb-date {
+      font-size: 11px; color: var(--ink-4);
+    }
+    .nb-date::before { content: "记录于 "; }
+    .nb-body { padding-bottom: 30px; }
+    .nb-actions {
+      display: none; position: absolute; top: 42px; right: 16px;
+      flex-direction: column; gap: 4px; background: var(--card);
+      border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 20;
+    }
+    .nb-actions.nb-actions-open { display: flex; }
+    .nb-actions .nb-load-btn, .nb-actions .nb-del-btn { text-align: left; }
 
     .nb-toolbar, .fav-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
     .nb-toolbar-right, .fav-toolbar-right { margin-left: 0; overflow-x: auto; }
     .batch-bar { flex-wrap: wrap; }
     .batch-bar .nb-toolbar-right { margin-left: 0; width: 100%; justify-content: flex-end; }
+
+    .photo-gallery-toggle { display: inline-block; }
+    .photo-del-btn {
+      opacity: 0; pointer-events: none;
+      width: 18px; height: 18px; top: 2px; right: 2px;
+      background: rgba(42,36,32,0.55);
+    }
+    .photo-gallery.pg-editing .photo-del-btn { opacity: 1; pointer-events: auto; }
   }
 </style>
 </head>
@@ -1056,6 +1092,18 @@ function toggleTheme(){
   const btn = document.getElementById('theme-toggle-btn');
   if (btn && (saved === 'dark' || saved === 'light')) btn.textContent = (saved === 'dark') ? '☀' : '◐';
 })();
+
+function toggleNbActionsMenu(event, id){
+  event.stopPropagation();
+  const menu = document.getElementById(id);
+  if(!menu) return;
+  const wasOpen = menu.classList.contains('nb-actions-open');
+  document.querySelectorAll('.nb-actions.nb-actions-open').forEach(el => el.classList.remove('nb-actions-open'));
+  if(!wasOpen) menu.classList.add('nb-actions-open');
+}
+document.addEventListener('click', function(){
+  document.querySelectorAll('.nb-actions.nb-actions-open').forEach(el => el.classList.remove('nb-actions-open'));
+});
 
 let baseIngredients = [
   {name:'氧化锌', parts:22},
@@ -1339,6 +1387,7 @@ async function uploadPhotos(table, id, files, rerenderFn) {
 }
 
 async function deletePhoto(table, id, idx, rerenderFn) {
+  if(!confirm('删除这张照片？')) return;
   const record = _findRecord(table, id);
   if(!record) return;
   const photo = record.photos[idx];
@@ -1413,7 +1462,19 @@ function renderPhotoGallery(photos, table, id, styleClass, triggerFn, deleteFn, 
     if(btn) _attachDragDrop(btn, table, id, renderNbAndFav);
   });
 
-  return `<div class="photo-gallery ${styleClass}-style"><div class="photo-strip">${thumbs}${addBtn}</div></div>`;
+  const galleryElId = `photo-gallery-${idPrefix}-${id}`;
+  return `<div class="photo-gallery ${styleClass}-style" id="${galleryElId}">
+    <button class="photo-gallery-toggle" onclick="togglePhotoEditMode('${galleryElId}')">管理照片</button>
+    <div class="photo-strip">${thumbs}${addBtn}</div>
+  </div>`;
+}
+
+function togglePhotoEditMode(elId) {
+  const el = document.getElementById(elId);
+  if(!el) return;
+  const editing = el.classList.toggle('pg-editing');
+  const btn = el.querySelector('.photo-gallery-toggle');
+  if(btn) btn.textContent = editing ? '完成' : '管理照片';
 }
 
 function _openPhotoLb(regKey, idx) {
@@ -2252,14 +2313,15 @@ function nbCardHtml(rec, ni, idPrefix) {
             <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
             <button class="nb-del-btn" onclick="cancelNbName(${ni},'${idPrefix}')">✕</button>
           </div>
+          <button class="nb-menu-trigger" onclick="toggleNbActionsMenu(event,'${idPrefix}-actions-${ni}')" title="更多操作">⋯</button>
         </div>
         <div class="nb-head-row2">
           <div class="nb-date">${rec.savedAt}</div>
-          <div class="nb-actions">
-            <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
-            <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
-            <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
-          </div>
+        </div>
+        <div class="nb-actions" id="${idPrefix}-actions-${ni}">
+          <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
+          <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
+          <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
         </div>
       </div>
       <div class="nb-body">
