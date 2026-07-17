@@ -323,27 +323,35 @@
   .io-btn-import:hover { background: var(--fav-bg); border-color: var(--fav); }
   .import-hint { font-size: 0.72rem; color: var(--ink3); font-family: var(--font-mono); }
   .batch-bar {
-    display: flex; gap: 8px; align-items: center;
-    margin: -0.8rem 0 1.4rem; padding: 8px 12px;
-    background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+    margin: 0; padding: 10px 16px; padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    background: var(--card); border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
   }
+  body.nb-batch-open .nb-panel { padding-bottom: 64px; }
   .card-check { margin-right: 2px; cursor: pointer; accent-color: var(--nb); }
   .nb-card-selected { box-shadow: 0 0 0 2px var(--accent) inset; }
   #nb-compare-btn:disabled { opacity: 0.35; cursor: default; }
 
   /* ── tag filter bar: same "batch-annotation" feel as .nb-effect-tag, with a
-     clickable affordance (underline) added for the active/hover states ── */
-  .nb-tagfilter-bar { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: -0.6rem 0 1.2rem; }
-  .nb-tagfilter-btn {
-    background: none; border: none; cursor: pointer; padding: 3px 1px;
+     clickable affordance (underline) added for the active/hover states.
+     Each tag is click-to-select-only (replaces the filter set) with a small
+     checkbox for the low-frequency multi-select path. ── */
+  .nb-tagfilter-bar { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: -0.6rem 0 0.3rem; }
+  .nb-tagfilter-item { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 1px; }
+  .nb-tagfilter-check { cursor: pointer; accent-color: var(--accent); position: relative; top: 1px; }
+  .nb-tagfilter-label {
+    background: none; border: none; cursor: pointer; padding: 0;
     font-family: var(--font-serif); font-size: 0.85rem; letter-spacing: 0.03em;
     color: var(--ink3); border-bottom: 1.5px solid transparent;
     display: inline-flex; align-items: baseline; gap: 5px; transition: all 0.12s;
   }
-  .nb-tagfilter-btn:hover { color: var(--accent); }
-  .nb-tagfilter-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .nb-tagfilter-label:hover { color: var(--accent); }
+  .nb-tagfilter-item.active .nb-tagfilter-label { color: var(--accent); border-bottom-color: var(--accent); }
   .nb-tagfilter-count { font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink3); }
-  .nb-tagfilter-btn.active .nb-tagfilter-count { color: var(--accent); }
+  .nb-tagfilter-item.active .nb-tagfilter-count { color: var(--accent); }
+  .nb-tagfilter-hint { font-family: var(--font-mono); font-size: 0.62rem; color: var(--ink4); margin: 0 0 1rem; }
   .nb-tagfilter-summary {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink2);
@@ -2929,9 +2937,15 @@ function renderNbTagFilterBar() {
     ...EFFECT_TAG_OPTIONS.filter(t => counts.has(t)),
     ...[...counts.keys()].filter(t => !EFFECT_TAG_OPTIONS.includes(t)).sort(),
   ];
-  const btnsHtml = orderedTags.map(t => `
-    <button class="nb-tagfilter-btn ${nbTagFilter.has(t)?'active':''}" onclick="toggleNbTagFilter('${t.replace(/'/g,"\\'")}')">${t}<span class="nb-tagfilter-count">${counts.get(t)}</span></button>
-  `).join('');
+  const btnsHtml = orderedTags.map(t => {
+    const esc = t.replace(/'/g,"\\'");
+    return `
+    <span class="nb-tagfilter-item ${nbTagFilter.has(t)?'active':''}">
+      <input type="checkbox" class="nb-tagfilter-check" ${nbTagFilter.has(t)?'checked':''} onclick="event.stopPropagation(); toggleNbTagCheckbox('${esc}')">
+      <span class="nb-tagfilter-label" onclick="selectNbTag('${esc}')">${t}<span class="nb-tagfilter-count">${counts.get(t)}</span></span>
+    </span>
+  `;
+  }).join('');
   let summaryHtml = '';
   if(nbTagFilter.size > 0) {
     const filteredCount = filterByTags(notebook, nbTagFilter, nbTagFilterMode).length;
@@ -2942,9 +2956,17 @@ function renderNbTagFilterBar() {
         <span class="nb-tagfilter-clear" onclick="clearNbTagFilter()">清除</span>
       </div>`;
   }
-  container.innerHTML = `<div class="nb-tagfilter-bar">${btnsHtml}</div>${summaryHtml}`;
+  container.innerHTML = `<div class="nb-tagfilter-bar">${btnsHtml}</div><div class="nb-tagfilter-hint">点击单选，勾选多选</div>${summaryHtml}`;
 }
-function toggleNbTagFilter(tag) {
+// Click the tag text: single-select, replaces whatever was selected (the high-frequency path).
+// Re-clicking the sole active tag clears the filter instead of leaving a size-1 no-op set.
+function selectNbTag(tag) {
+  nbTagFilter = (nbTagFilter.size === 1 && nbTagFilter.has(tag)) ? new Set() : new Set([tag]);
+  renderNotebook();
+}
+// The checkbox is the multi-select entry point: it only ever adds/removes this one tag,
+// leaving whatever else is already selected untouched.
+function toggleNbTagCheckbox(tag) {
   if(nbTagFilter.has(tag)) nbTagFilter.delete(tag); else nbTagFilter.add(tag);
   renderNotebook();
 }
@@ -3067,6 +3089,7 @@ function toggleNbBatchMode() {
   if(!nbBatchMode) nbSelectedIds.clear();
   document.getElementById('nb-batch-bar').style.display = nbBatchMode ? 'flex' : 'none';
   document.getElementById('nb-batch-btn').textContent = nbBatchMode ? '✕ 退出批量' : '☑ 批量';
+  document.body.classList.toggle('nb-batch-open', nbBatchMode);
   renderNotebook();
 }
 function toggleNbSelect(id, checked) {
@@ -3101,6 +3124,7 @@ async function deleteNbBatch() {
   nbBatchMode = false;
   document.getElementById('nb-batch-bar').style.display = 'none';
   document.getElementById('nb-batch-btn').textContent = '☑ 批量';
+  document.body.classList.remove('nb-batch-open');
   updateNbBadge();
   renderNbAndFav();
 }
