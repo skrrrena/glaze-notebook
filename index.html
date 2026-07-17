@@ -329,6 +329,35 @@
   }
   .card-check { margin-right: 2px; cursor: pointer; accent-color: var(--nb); }
   .nb-card-selected { box-shadow: 0 0 0 2px var(--accent) inset; }
+  #nb-compare-btn:disabled { opacity: 0.35; cursor: default; }
+
+  /* ── tag filter bar: same "batch-annotation" feel as .nb-effect-tag, with a
+     clickable affordance (underline) added for the active/hover states ── */
+  .nb-tagfilter-bar { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: -0.6rem 0 1.2rem; }
+  .nb-tagfilter-btn {
+    background: none; border: none; cursor: pointer; padding: 3px 1px;
+    font-family: var(--font-serif); font-size: 0.85rem; letter-spacing: 0.03em;
+    color: var(--ink3); border-bottom: 1.5px solid transparent;
+    display: inline-flex; align-items: baseline; gap: 5px; transition: all 0.12s;
+  }
+  .nb-tagfilter-btn:hover { color: var(--accent); }
+  .nb-tagfilter-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .nb-tagfilter-count { font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink3); }
+  .nb-tagfilter-btn.active .nb-tagfilter-count { color: var(--accent); }
+  .nb-tagfilter-summary {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink2);
+    padding: 7px 12px; background: var(--bg2); border: 1px solid var(--line);
+    border-radius: 6px; margin: 0 0 1.2rem;
+  }
+  .nb-tagfilter-mode-btn {
+    font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3);
+    background: none; border: 1px solid var(--line); border-radius: 3px;
+    padding: 2px 8px; cursor: pointer; transition: all 0.12s;
+  }
+  .nb-tagfilter-mode-btn:hover { border-color: var(--ink3); color: var(--ink); }
+  .nb-tagfilter-clear { color: var(--ink3); cursor: pointer; border-bottom: 1px solid var(--line); }
+  .nb-tagfilter-clear:hover { color: var(--ink); border-color: var(--ink); }
   .fav-empty {
     text-align: center; padding: 4rem 2rem;
     color: var(--ink3); font-size: 0.85rem; line-height: 2;
@@ -748,6 +777,59 @@
   .modal-cancel { background: none; border: 1px solid var(--line); color: var(--ink2); }
   .modal-cancel:hover { background: var(--bg2); }
 
+  /* compare modal — read-only, side-by-side; body scrolls both axes so narrow
+     viewports get horizontal scroll instead of squeezed columns */
+  .comparemodal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(42,36,32,0.45);
+    z-index: 150; align-items: center; justify-content: center; padding: 24px;
+  }
+  .comparemodal-overlay.open { display: flex; }
+  .comparemodal {
+    background: var(--card); border-radius: 10px; border: 1px solid var(--line);
+    width: 100%; max-width: 980px; max-height: 88vh;
+    display: flex; flex-direction: column; animation: fadeIn 0.18s ease;
+  }
+  .comparemodal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.2rem 1.6rem; border-bottom: 1px solid var(--nb-line); flex-shrink: 0;
+  }
+  .comparemodal-head h3 { font-size: 1rem; font-weight: 400; letter-spacing: 0.06em; color: var(--nb); }
+  .comparemodal-close {
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    color: var(--ink3); cursor: pointer; padding: 2px 10px; font-size: 0.85rem;
+  }
+  .comparemodal-close:hover { color: var(--ink); border-color: var(--ink); }
+  .comparemodal-scroll { overflow: auto; padding: 1.4rem 1.6rem 1.8rem; }
+
+  .compare-table { display: grid; column-gap: 18px; min-width: 480px; }
+  .compare-row { display: contents; }
+  .compare-cell {
+    padding: 9px 4px; border-bottom: 1px solid var(--nb-line);
+    font-family: var(--font-mono); font-size: 0.8rem; color: var(--ink2);
+    display: flex; align-items: center;
+  }
+  .compare-cell-label {
+    font-family: var(--font-serif); color: var(--ink3); font-size: 0.78rem;
+    position: sticky; left: 0; background: var(--card);
+  }
+  .compare-cell-diff { color: var(--accent); background: var(--nb-bg); border-radius: 3px; }
+  .compare-col-head {
+    font-family: var(--font-serif); font-size: 0.95rem; color: var(--ink);
+    text-align: center; justify-content: center; border-bottom: 1px solid var(--line);
+    padding-bottom: 12px; flex-direction: column; gap: 8px;
+  }
+  .compare-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 1px solid var(--nb-line); background: var(--bg2); display: block; }
+  .compare-thumb-empty {
+    width: 100%; aspect-ratio: 1; border-radius: 6px; border: 1px dashed var(--line);
+    display: flex; align-items: center; justify-content: center; color: var(--ink3); font-size: 0.68rem;
+  }
+  .compare-section-label {
+    font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.1em;
+    color: var(--ink4); padding: 10px 4px 4px; grid-column: 1 / -1; border: none;
+  }
+  .compare-collapsed-note { color: var(--ink3); grid-column: 2 / -1; font-family: var(--font-sans); }
+
   /* ── photo gallery: full-width strip at top of card, photos are the star ── */
   .photo-gallery {
     margin-top: 10px; padding-top: 10px;
@@ -914,6 +996,8 @@
     .nb-toolbar-right, .fav-toolbar-right { margin-left: 0; overflow-x: auto; }
     .batch-bar { flex-wrap: wrap; }
     .batch-bar .nb-toolbar-right { margin-left: 0; width: 100%; justify-content: flex-end; }
+    .nb-tagfilter-bar { gap: 4px 12px; }
+    .nb-tagfilter-summary { width: 100%; box-sizing: border-box; }
 
     .photo-gallery-toggle { display: inline-block; }
     .photo-del-btn {
@@ -1020,7 +1104,7 @@
         <button class="io-btn io-btn-export" onclick="exportNotebook()">↓ 导出 JSON</button>
         <button class="io-btn io-btn-import" onclick="document.getElementById('nb-import-input').click()">↑ 导入 JSON</button>
         <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
-        <button class="io-btn" id="nb-batch-btn" onclick="toggleNbBatchMode()">☑ 批量删除</button>
+        <button class="io-btn" id="nb-batch-btn" onclick="toggleNbBatchMode()">☑ 批量</button>
         <button class="nb-new-btn" onclick="openNbModal(null, null)">＋ 手动新建</button>
       </div>
     </div>
@@ -1029,10 +1113,12 @@
       <button class="io-btn io-btn-export" onclick="nbSelectNone()">取消全选</button>
       <span class="import-hint" id="nb-batch-count-label">已选 0 条</span>
       <div class="nb-toolbar-right">
+        <button class="io-btn io-btn-export" id="nb-compare-btn" onclick="openCompareModal()" disabled>⚖ 对比选中项</button>
         <button class="io-btn" style="color:var(--ink);border-color:var(--line)" onclick="deleteNbBatch()">删除选中</button>
         <button class="io-btn io-btn-export" onclick="toggleNbBatchMode()">取消</button>
       </div>
     </div>
+    <div id="nb-tagfilter-container"></div>
     <div id="nb-list"></div>
   </div>
 </div>
@@ -1167,6 +1253,17 @@
   </div>
 </div>
 
+<!-- compare modal — read-only, no confirm/cancel needed -->
+<div class="comparemodal-overlay" id="compare-modal" onclick="closeCompareModal(event)">
+  <div class="comparemodal" onclick="event.stopPropagation()">
+    <div class="comparemodal-head">
+      <h3>配方对比</h3>
+      <button class="comparemodal-close" onclick="closeCompareModal()">✕</button>
+    </div>
+    <div class="comparemodal-scroll" id="compare-modal-body"></div>
+  </div>
+</div>
+
 <!-- update-to-notebook picker modal -->
 <div class="updmodal-overlay" id="upd-modal" onclick="closeUpdModal(event)">
   <div class="updmodal">
@@ -1287,6 +1384,8 @@ let glazesLoadedFromNb = null;
 
 let nbBatchMode = false;
 let nbSelectedIds = new Set();
+let nbTagFilter = new Set();
+let nbTagFilterMode = 'AND';
 // num of the record currently open in the edit modal, so any glaze-tree elsewhere
 // on the page that references it by name can highlight the matching node.
 let nbActiveEditNum = null;
@@ -1836,6 +1935,102 @@ async function exportShareCard() {
   } finally {
     btn.textContent = originalText; btn.disabled = false;
   }
+}
+
+// ── compare modal: read-only side-by-side view of 2-3 selected records ──
+function openCompareModal() {
+  const ids = [...nbSelectedIds];
+  if(ids.length < 2 || ids.length > 3) return;
+  const records = ids.map(id => notebook.find(r => r.id === id)).filter(Boolean);
+  if(records.length < 2) return;
+  document.getElementById('compare-modal-body').innerHTML = buildCompareTableHtml(records);
+  document.getElementById('compare-modal').classList.add('open');
+}
+function closeCompareModal(e) {
+  if(!e || e.target === document.getElementById('compare-modal')) {
+    document.getElementById('compare-modal').classList.remove('open');
+  }
+}
+
+// cell === '' still counts as "same" (e.g. all blank); diff highlight only fires
+// when the values actually differ, never when a row is entirely empty.
+function _compareCellsHtml(values) {
+  const allSame = values.every(v => v === values[0]);
+  return values.map(v => `<div class="compare-cell ${!allSame && v!==''?'compare-cell-diff':''}">${v || '—'}</div>`).join('');
+}
+function _compareRowHtml(label, values) {
+  return `<div class="compare-row"><div class="compare-cell compare-cell-label">${label}</div>${_compareCellsHtml(values)}</div>`;
+}
+function _compareSectionLabel(label) {
+  return `<div class="compare-section-label">${label}</div>`;
+}
+
+function buildCompareTableHtml(records) {
+  const n = records.length;
+  const gridCols = `grid-template-columns: 90px repeat(${n}, minmax(120px, 1fr));`;
+  let rows = '';
+
+  // header row: name/num + representative photo
+  rows += `<div class="compare-row"><div class="compare-cell compare-cell-label"></div>${records.map(r => {
+    const p = (r.photos||[])[0];
+    const thumb = p?.src ? `<img class="compare-thumb" src="${p.src}">` : `<div class="compare-thumb-empty">无照片</div>`;
+    return `<div class="compare-cell compare-col-head">${thumb}<div>${r.num ? `<span style="color:var(--ink3);font-family:var(--font-mono);font-size:0.8rem">${r.num}　</span>` : ''}${r.name}</div></div>`;
+  }).join('')}</div>`;
+
+  rows += _compareRowHtml('效果标签', records.map(r => (r.effectTags||[]).join('、')));
+
+  // base ingredients: collapse to one note row if every record has the identical set
+  const baseKey = r => (r.baseIngredients||[]).map(i=>`${i.name}:${i.parts}`).sort().join('|');
+  const baseKeys = records.map(baseKey);
+  const baseAllSame = baseKeys.every(k => k === baseKeys[0]) && baseKeys[0] !== '';
+  rows += _compareSectionLabel('基釉');
+  if(baseAllSame) {
+    const summary = (records[0].baseIngredients||[]).map(i=>`${i.name} ${i.parts}`).join('　');
+    rows += `<div class="compare-row"><div class="compare-cell compare-cell-label"></div><div class="compare-cell compare-collapsed-note">基釉相同：${summary}</div></div>`;
+  } else {
+    const allNames = [...new Set(records.flatMap(r => (r.baseIngredients||[]).map(i=>i.name)))];
+    allNames.forEach(name => {
+      const vals = records.map(r => {
+        const found = (r.baseIngredients||[]).find(i=>i.name===name);
+        return found ? String(found.parts) : '';
+      });
+      rows += _compareRowHtml(name, vals);
+    });
+  }
+
+  // additives: same union-of-names approach, each cell shows that record's pct for the name
+  const allAdditiveNames = [...new Set(records.flatMap(r => Object.keys(r.additives||{})))];
+  if(allAdditiveNames.length) {
+    rows += _compareSectionLabel('添加剂');
+    allAdditiveNames.forEach(name => {
+      const vals = records.map(r => {
+        const pct = (r.additives||{})[name];
+        return pct != null ? `+${(+pct).toFixed(3)}%` : '';
+      });
+      rows += _compareRowHtml(name, vals);
+    });
+  }
+
+  // Seger: union of oxides that unity-normalize successfully across the compared records
+  const segerResults = records.map(r => computeSegerFormula(r.baseIngredients, r.additives));
+  if(segerResults.some(r => r.ok)) {
+    rows += _compareSectionLabel('化学分析（Seger 式）');
+    const allOxides = [...new Set(segerResults.flatMap(r => r.ok ? Object.keys(r.unity) : []))];
+    allOxides.forEach(ox => {
+      const vals = segerResults.map(r => r.ok && r.unity[ox] ? r.unity[ox].toFixed(3) : '');
+      rows += _compareRowHtml(ox, vals);
+    });
+    rows += _compareRowHtml('Si:Al', segerResults.map(r => r.ok && r.ratios.sga!=null ? r.ratios.sga.toFixed(2) : ''));
+  }
+
+  rows += _compareSectionLabel('其他');
+  rows += _compareRowHtml('烧成', records.map(r => {
+    const fc = r.firingCurveId ? firingCurves.find(c=>c.id===r.firingCurveId) : null;
+    return fc ? fc.name : '';
+  }));
+  rows += _compareRowHtml('心得', records.map(r => r.note || ''));
+
+  return `<div class="compare-table" style="${gridCols}">${rows}</div>`;
 }
 
 // global registry so onclick handlers can reference photos safely
@@ -2391,6 +2586,17 @@ function updateNbBadge() {
 }
 
 const EFFECT_TAG_OPTIONS = ['亮光','哑光','半哑光/缎面','结晶','开裂','流动','乳浊','其他'];
+
+// Standalone so it can run against either notebook_entries records or (post data-layer-merge,
+// see §1) individual steps — both shapes carry an effectTags array, filtering doesn't care which.
+function filterByTags(records, selectedTags, mode) {
+  if(!selectedTags || selectedTags.size === 0) return records;
+  const tags = [...selectedTags];
+  return records.filter(r => {
+    const rTags = r.effectTags || [];
+    return mode === 'OR' ? tags.some(t => rTags.includes(t)) : tags.every(t => rTags.includes(t));
+  });
+}
 function firingCurveOptionsHtml(selectedId) {
   return '<option value="">（未分类 / 未知）</option>' +
     firingCurves.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name}</option>`).join('');
@@ -2694,12 +2900,62 @@ function renderNotebook() {
   const wrap = document.getElementById('nb-list');
   const countEl = document.getElementById('nb-toolbar-count');
   if(countEl) countEl.textContent = notebook.length > 0 ? `共 ${notebook.length} 条配方` : '';
+  renderNbTagFilterBar();
   if(notebook.length===0) {
     wrap.innerHTML = `<div class="nb-empty"><div class="big">册</div>配方本是空的<br>从计算结果「存入配方本」，或点右上角手动新建</div>`;
     return;
   }
-  wrap.innerHTML = notebook.map((rec,ni) => nbCardHtml(rec, ni, 'nb')).join('');
+  const filtered = filterByTags(notebook, nbTagFilter, nbTagFilterMode);
+  if(filtered.length === 0 && nbTagFilter.size > 0) {
+    const msg = nbTagFilterMode === 'OR' ? '没有满足任一所选标签的釉' : '没有同时满足这些标签的釉';
+    wrap.innerHTML = `<div class="nb-empty"><div class="big">◇</div>${msg}</div>`;
+    updateNbBatchCount();
+    return;
+  }
+  const keepIds = new Set(filtered.map(r=>r.id));
+  wrap.innerHTML = notebook.map((rec,ni) => keepIds.has(rec.id) ? nbCardHtml(rec, ni, 'nb') : '').join('');
   updateNbBatchCount();
+}
+
+// Scans the live notebook (not the filtered result) so tag buttons and their counts
+// never disappear just because a filter is already narrowing the list below them.
+function renderNbTagFilterBar() {
+  const container = document.getElementById('nb-tagfilter-container');
+  if(!container) return;
+  const counts = new Map();
+  notebook.forEach(r => (r.effectTags||[]).forEach(t => counts.set(t, (counts.get(t)||0)+1)));
+  if(counts.size === 0) { container.innerHTML = ''; return; }
+  const orderedTags = [
+    ...EFFECT_TAG_OPTIONS.filter(t => counts.has(t)),
+    ...[...counts.keys()].filter(t => !EFFECT_TAG_OPTIONS.includes(t)).sort(),
+  ];
+  const btnsHtml = orderedTags.map(t => `
+    <button class="nb-tagfilter-btn ${nbTagFilter.has(t)?'active':''}" onclick="toggleNbTagFilter('${t.replace(/'/g,"\\'")}')">${t}<span class="nb-tagfilter-count">${counts.get(t)}</span></button>
+  `).join('');
+  let summaryHtml = '';
+  if(nbTagFilter.size > 0) {
+    const filteredCount = filterByTags(notebook, nbTagFilter, nbTagFilterMode).length;
+    summaryHtml = `
+      <div class="nb-tagfilter-summary">
+        <span>筛选：${[...nbTagFilter].join(' · ')}（${filteredCount} 条）</span>
+        ${nbTagFilter.size > 1 ? `<button class="nb-tagfilter-mode-btn" onclick="toggleNbTagFilterMode()">${nbTagFilterMode==='AND'?'同时满足':'任一满足'}</button>` : ''}
+        <span class="nb-tagfilter-clear" onclick="clearNbTagFilter()">清除</span>
+      </div>`;
+  }
+  container.innerHTML = `<div class="nb-tagfilter-bar">${btnsHtml}</div>${summaryHtml}`;
+}
+function toggleNbTagFilter(tag) {
+  if(nbTagFilter.has(tag)) nbTagFilter.delete(tag); else nbTagFilter.add(tag);
+  renderNotebook();
+}
+function toggleNbTagFilterMode() {
+  nbTagFilterMode = nbTagFilterMode === 'AND' ? 'OR' : 'AND';
+  renderNotebook();
+}
+function clearNbTagFilter() {
+  nbTagFilter.clear();
+  nbTagFilterMode = 'AND';
+  renderNotebook();
 }
 
 // Shared by the notebook tab and the starred (收藏) tab so a starred record renders
@@ -2810,7 +3066,7 @@ function toggleNbBatchMode() {
   nbBatchMode = !nbBatchMode;
   if(!nbBatchMode) nbSelectedIds.clear();
   document.getElementById('nb-batch-bar').style.display = nbBatchMode ? 'flex' : 'none';
-  document.getElementById('nb-batch-btn').textContent = nbBatchMode ? '✕ 退出批量' : '☑ 批量删除';
+  document.getElementById('nb-batch-btn').textContent = nbBatchMode ? '✕ 退出批量' : '☑ 批量';
   renderNotebook();
 }
 function toggleNbSelect(id, checked) {
@@ -2828,6 +3084,8 @@ function nbSelectNone() {
 function updateNbBatchCount() {
   const el = document.getElementById('nb-batch-count-label');
   if(el) el.textContent = `已选 ${nbSelectedIds.size} 条`;
+  const cmpBtn = document.getElementById('nb-compare-btn');
+  if(cmpBtn) cmpBtn.disabled = nbSelectedIds.size < 2 || nbSelectedIds.size > 3;
 }
 async function deleteNbBatch() {
   if(nbSelectedIds.size === 0) { alert('还没选择要删除的配方'); return; }
@@ -2842,7 +3100,7 @@ async function deleteNbBatch() {
   nbSelectedIds.clear();
   nbBatchMode = false;
   document.getElementById('nb-batch-bar').style.display = 'none';
-  document.getElementById('nb-batch-btn').textContent = '☑ 批量删除';
+  document.getElementById('nb-batch-btn').textContent = '☑ 批量';
   updateNbBadge();
   renderNbAndFav();
 }
