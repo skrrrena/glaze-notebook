@@ -334,24 +334,42 @@
   .nb-card-selected { box-shadow: 0 0 0 2px var(--accent) inset; }
   #nb-compare-btn:disabled { opacity: 0.35; cursor: default; }
 
-  /* ── tag filter bar: same "batch-annotation" feel as .nb-effect-tag, with a
-     clickable affordance (underline) added for the active/hover states.
-     Each tag is click-to-select-only (replaces the filter set) with a small
-     checkbox for the low-frequency multi-select path. ── */
-  .nb-tagfilter-bar { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: -0.6rem 0 0.3rem; }
-  .nb-tagfilter-item { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 1px; }
-  .nb-tagfilter-check { cursor: pointer; accent-color: var(--accent); position: relative; top: 1px; }
-  .nb-tagfilter-label {
-    background: none; border: none; cursor: pointer; padding: 0;
-    font-family: var(--font-serif); font-size: 0.85rem; letter-spacing: 0.03em;
-    color: var(--ink3); border-bottom: 1.5px solid transparent;
-    display: inline-flex; align-items: baseline; gap: 5px; transition: all 0.12s;
+  /* ── global search (配方本 top) ── */
+  .nb-search-row { margin: 0 0 1rem; }
+  .nb-search-input {
+    padding: 7px 12px; font-size: 0.82rem;
   }
-  .nb-tagfilter-label:hover { color: var(--accent); }
-  .nb-tagfilter-item.active .nb-tagfilter-label { color: var(--accent); border-bottom-color: var(--accent); }
-  .nb-tagfilter-count { font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink3); }
-  .nb-tagfilter-item.active .nb-tagfilter-count { color: var(--accent); }
-  .nb-tagfilter-hint { font-family: var(--font-mono); font-size: 0.62rem; color: var(--ink4); margin: 0 0 1rem; }
+  .nb-search-input:focus { border-color: var(--accent); }
+
+  /* ── tag filter: two-layer — segmented single-select "quick" bar (fixed
+     category list) + a "筛选" launcher button opening a full multi-select
+     popover (all tags actually used, data-derived). The two controls share
+     one underlying filter state; physically separate so there is no more
+     click-text-vs-click-checkbox ambiguity. ── */
+  .nb-filterbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: -0.6rem 0 0.6rem; }
+  .nb-segctrl {
+    display: inline-flex; border: 1px solid var(--line); border-radius: 7px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%;
+  }
+  .nb-seg-btn {
+    flex-shrink: 0; background: none; border: none; cursor: pointer;
+    font-family: var(--font-serif); font-size: 0.8rem; color: var(--ink3);
+    padding: 6px 12px; border-right: 1px solid var(--line); transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .nb-seg-btn:last-child { border-right: none; }
+  .nb-seg-btn:hover { color: var(--ink); background: var(--bg2); }
+  .nb-seg-btn.active { background: var(--accent); color: var(--card); }
+  .nb-tagpanel-btn {
+    position: relative; display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink2);
+    background: var(--card); border: 1px solid var(--line); border-radius: 7px;
+    padding: 6px 12px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+  }
+  .nb-tagpanel-btn:hover { border-color: var(--ink3); color: var(--ink); }
+  .nb-tagpanel-btn-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  }
   .nb-tagfilter-summary {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink2);
@@ -838,6 +856,50 @@
   }
   .compare-collapsed-note { color: var(--ink3); grid-column: 2 / -1; font-family: var(--font-sans); }
 
+  /* ── 更多筛选 popover: full multi-select over every tag actually used ── */
+  .tagpanelmodal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(42,36,32,0.45);
+    z-index: 150; align-items: center; justify-content: center; padding: 20px;
+  }
+  .tagpanelmodal-overlay.open { display: flex; }
+  .tagpanelmodal {
+    background: var(--card); border-radius: 10px; width: 100%; max-width: 420px;
+    max-height: 80vh; display: flex; flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  }
+  .tagpanelmodal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem 1.4rem; border-bottom: 1px solid var(--line);
+  }
+  .tagpanelmodal-head h3 { font-size: 1rem; font-weight: 500; margin: 0; }
+  .tagpanelmodal-close {
+    background: none; border: 1px solid var(--line); border-radius: 50%;
+    width: 26px; height: 26px; cursor: pointer; color: var(--ink3);
+    font-size: 0.85rem; line-height: 1; transition: all 0.12s;
+  }
+  .tagpanelmodal-close:hover { color: var(--ink); border-color: var(--ink); }
+  .tagpanel-modebar {
+    display: flex; align-items: center; gap: 10px; padding: 0.8rem 1.4rem 0;
+    font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink3);
+  }
+  .tagpanel-list {
+    overflow: auto; padding: 0.6rem 0.6rem 1rem; display: flex; flex-direction: column;
+  }
+  .tagpanel-row {
+    display: flex; align-items: center; gap: 9px; padding: 7px 0.8rem;
+    border-radius: 5px; cursor: pointer; font-family: var(--font-serif); font-size: 0.86rem;
+    color: var(--ink2); transition: background 0.12s;
+  }
+  .tagpanel-row:hover { background: var(--bg2); }
+  .tagpanel-row input[type=checkbox] { cursor: pointer; accent-color: var(--accent); }
+  .tagpanel-row-name { flex: 1; }
+  .tagpanel-row-count { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); }
+  .tagpanel-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.9rem 1.4rem; border-top: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 0.72rem;
+  }
+
   /* ── photo gallery: full-width strip at top of card, photos are the star ── */
   .photo-gallery {
     margin-top: 10px; padding-top: 10px;
@@ -1004,7 +1066,7 @@
     .nb-toolbar-right, .fav-toolbar-right { margin-left: 0; overflow-x: auto; }
     .batch-bar { flex-wrap: wrap; }
     .batch-bar .nb-toolbar-right { margin-left: 0; width: 100%; justify-content: flex-end; }
-    .nb-tagfilter-bar { gap: 4px 12px; }
+    .nb-filterbar { gap: 8px; }
     .nb-tagfilter-summary { width: 100%; box-sizing: border-box; }
 
     .photo-gallery-toggle { display: inline-block; }
@@ -1106,6 +1168,9 @@
 <!-- notebook tab -->
 <div class="tab-panel" id="tab-nb">
   <div class="nb-panel">
+    <div class="nb-search-row">
+      <input type="text" class="nb-search-input" id="nb-search-input" placeholder="搜索：编号 / 釉名 / 备注 / 原料 / 标签" oninput="onNbSearchInput(this.value)">
+    </div>
     <div class="nb-toolbar">
       <span class="import-hint" id="nb-toolbar-count"></span>
       <div class="nb-toolbar-right">
@@ -1272,6 +1337,19 @@
   </div>
 </div>
 
+<!-- 更多筛选 popover: full multi-select over every tag actually used -->
+<div class="tagpanelmodal-overlay" id="tagpanel-modal" onclick="closeNbTagPanel(event)">
+  <div class="tagpanelmodal" onclick="event.stopPropagation()">
+    <div class="tagpanelmodal-head">
+      <h3>更多筛选</h3>
+      <button class="tagpanelmodal-close" onclick="closeNbTagPanel()">✕</button>
+    </div>
+    <div class="tagpanel-modebar" id="tagpanel-modebar"></div>
+    <div class="tagpanel-list" id="tagpanel-list"></div>
+    <div class="tagpanel-foot" id="tagpanel-foot"></div>
+  </div>
+</div>
+
 <!-- update-to-notebook picker modal -->
 <div class="updmodal-overlay" id="upd-modal" onclick="closeUpdModal(event)">
   <div class="updmodal">
@@ -1394,6 +1472,7 @@ let nbBatchMode = false;
 let nbSelectedIds = new Set();
 let nbTagFilter = new Set();
 let nbTagFilterMode = 'AND';
+let nbSearchQuery = '';
 // num of the record currently open in the edit modal, so any glaze-tree elsewhere
 // on the page that references it by name can highlight the matching node.
 let nbActiveEditNum = null;
@@ -2595,6 +2674,10 @@ function updateNbBadge() {
 
 const EFFECT_TAG_OPTIONS = ['亮光','哑光','半哑光/缎面','结晶','开裂','流动','乳浊','其他'];
 
+// Fixed "quick" segmented-bar categories — hand-picked, independent of what tags
+// actually exist in records (unlike EFFECT_TAG_OPTIONS which mirrors the edit form).
+const NB_QUICK_CATEGORIES = ['结晶','哑光','亮光','流动','开裂','乳浊'];
+
 // Standalone so it can run against either notebook_entries records or (post data-layer-merge,
 // see §1) individual steps — both shapes carry an effectTags array, filtering doesn't care which.
 function filterByTags(records, selectedTags, mode) {
@@ -2904,6 +2987,21 @@ function jumpToNbByLabel(label) {
   el.classList.add('nb-card-flash');
 }
 
+function matchesNbSearch(rec, q) {
+  if(!q) return true;
+  const hay = [
+    rec.num, rec.name, rec.note,
+    ...(rec.baseIngredients||[]).map(i=>i.name),
+    ...(rec.glazes||[]).flatMap(g=>(g.additives||[]).map(a=>a.name)),
+    ...(rec.effectTags||[]),
+  ].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(q);
+}
+function onNbSearchInput(v) {
+  nbSearchQuery = (v||'').trim().toLowerCase();
+  renderNotebook();
+}
+
 function renderNotebook() {
   const wrap = document.getElementById('nb-list');
   const countEl = document.getElementById('nb-toolbar-count');
@@ -2913,9 +3011,11 @@ function renderNotebook() {
     wrap.innerHTML = `<div class="nb-empty"><div class="big">册</div>配方本是空的<br>从计算结果「存入配方本」，或点右上角手动新建</div>`;
     return;
   }
-  const filtered = filterByTags(notebook, nbTagFilter, nbTagFilterMode);
-  if(filtered.length === 0 && nbTagFilter.size > 0) {
-    const msg = nbTagFilterMode === 'OR' ? '没有满足任一所选标签的釉' : '没有同时满足这些标签的釉';
+  const tagFiltered = filterByTags(notebook, nbTagFilter, nbTagFilterMode);
+  const filtered = nbSearchQuery ? tagFiltered.filter(r => matchesNbSearch(r, nbSearchQuery)) : tagFiltered;
+  if(filtered.length === 0 && (nbTagFilter.size > 0 || nbSearchQuery)) {
+    const tagMsg = nbTagFilterMode === 'OR' ? '没有满足任一所选标签的釉' : '没有同时满足这些标签的釉';
+    const msg = nbSearchQuery ? (tagFiltered.length === 0 ? tagMsg : '没有匹配搜索内容的釉') : tagMsg;
     wrap.innerHTML = `<div class="nb-empty"><div class="big">◇</div>${msg}</div>`;
     updateNbBatchCount();
     return;
@@ -2925,27 +3025,24 @@ function renderNotebook() {
   updateNbBatchCount();
 }
 
-// Scans the live notebook (not the filtered result) so tag buttons and their counts
-// never disappear just because a filter is already narrowing the list below them.
+// Segmented "quick" bar (fixed categories) + 筛选 launcher button. Both this bar and the
+// popover (renderNbTagPanelBody) read/write the SAME nbTagFilter/nbTagFilterMode — they are
+// two entry points onto one filter, not two independently-composed filter dimensions.
 function renderNbTagFilterBar() {
   const container = document.getElementById('nb-tagfilter-container');
   if(!container) return;
   const counts = new Map();
   notebook.forEach(r => (r.effectTags||[]).forEach(t => counts.set(t, (counts.get(t)||0)+1)));
   if(counts.size === 0) { container.innerHTML = ''; return; }
-  const orderedTags = [
-    ...EFFECT_TAG_OPTIONS.filter(t => counts.has(t)),
-    ...[...counts.keys()].filter(t => !EFFECT_TAG_OPTIONS.includes(t)).sort(),
-  ];
-  const btnsHtml = orderedTags.map(t => {
-    const esc = t.replace(/'/g,"\\'");
-    return `
-    <span class="nb-tagfilter-item ${nbTagFilter.has(t)?'active':''}">
-      <input type="checkbox" class="nb-tagfilter-check" ${nbTagFilter.has(t)?'checked':''} onclick="event.stopPropagation(); toggleNbTagCheckbox('${esc}')">
-      <span class="nb-tagfilter-label" onclick="selectNbTag('${esc}')">${t}<span class="nb-tagfilter-count">${counts.get(t)}</span></span>
-    </span>
-  `;
-  }).join('');
+  const segHtml = [`<button class="nb-seg-btn ${nbTagFilter.size===0?'active':''}" onclick="selectNbCategory('')">全部</button>`]
+    .concat(NB_QUICK_CATEGORIES.map(t => {
+      const esc = t.replace(/'/g,"\\'");
+      const active = nbTagFilter.size===1 && nbTagFilter.has(t);
+      return `<button class="nb-seg-btn ${active?'active':''}" onclick="selectNbCategory('${esc}')">${t}</button>`;
+    })).join('');
+  // The 筛选 button flags itself only when the current state could not have come from the
+  // segmented bar alone (a multi-select, or a tag outside the fixed quick-category list).
+  const extraActive = nbTagFilter.size > 1 || [...nbTagFilter].some(t => !NB_QUICK_CATEGORIES.includes(t));
   let summaryHtml = '';
   if(nbTagFilter.size > 0) {
     const filteredCount = filterByTags(notebook, nbTagFilter, nbTagFilterMode).length;
@@ -2956,28 +3053,81 @@ function renderNbTagFilterBar() {
         <span class="nb-tagfilter-clear" onclick="clearNbTagFilter()">清除</span>
       </div>`;
   }
-  container.innerHTML = `<div class="nb-tagfilter-bar">${btnsHtml}</div><div class="nb-tagfilter-hint">点击单选，勾选多选</div>${summaryHtml}`;
+  container.innerHTML = `
+    <div class="nb-filterbar">
+      <div class="nb-segctrl">${segHtml}</div>
+      <button class="nb-tagpanel-btn" onclick="openNbTagPanel()">筛选${extraActive ? '<span class="nb-tagpanel-btn-dot"></span>' : ''}</button>
+    </div>
+    ${summaryHtml}`;
 }
-// Click the tag text: single-select, replaces whatever was selected (the high-frequency path).
-// Re-clicking the sole active tag clears the filter instead of leaving a size-1 no-op set.
-function selectNbTag(tag) {
-  nbTagFilter = (nbTagFilter.size === 1 && nbTagFilter.has(tag)) ? new Set() : new Set([tag]);
+// Segmented bar: single-select, replaces whatever was selected. Re-clicking the sole
+// active segment (or clicking 全部) clears the filter.
+function selectNbCategory(tag) {
+  if(!tag) { nbTagFilter.clear(); }
+  else { nbTagFilter = (nbTagFilter.size === 1 && nbTagFilter.has(tag)) ? new Set() : new Set([tag]); }
   renderNotebook();
+  renderNbTagPanelBody();
 }
-// The checkbox is the multi-select entry point: it only ever adds/removes this one tag,
-// leaving whatever else is already selected untouched.
+// Popover checkbox rows: multi-select, only ever adds/removes this one tag.
 function toggleNbTagCheckbox(tag) {
   if(nbTagFilter.has(tag)) nbTagFilter.delete(tag); else nbTagFilter.add(tag);
   renderNotebook();
+  renderNbTagPanelBody();
 }
 function toggleNbTagFilterMode() {
   nbTagFilterMode = nbTagFilterMode === 'AND' ? 'OR' : 'AND';
   renderNotebook();
+  renderNbTagPanelBody();
 }
 function clearNbTagFilter() {
   nbTagFilter.clear();
   nbTagFilterMode = 'AND';
   renderNotebook();
+  renderNbTagPanelBody();
+}
+
+// 更多筛选 popover: full multi-select over every tag actually used across all records
+// (data-derived, unlike the fixed NB_QUICK_CATEGORIES bar). No search box here — with many
+// tags, scrolling is enough; searching specific content is what the global search box is for.
+function renderNbTagPanelBody() {
+  const list = document.getElementById('tagpanel-list');
+  if(!list) return;
+  const modebar = document.getElementById('tagpanel-modebar');
+  const foot = document.getElementById('tagpanel-foot');
+  const counts = new Map();
+  notebook.forEach(r => (r.effectTags||[]).forEach(t => counts.set(t, (counts.get(t)||0)+1)));
+  const orderedTags = [
+    ...EFFECT_TAG_OPTIONS.filter(t => counts.has(t)),
+    ...[...counts.keys()].filter(t => !EFFECT_TAG_OPTIONS.includes(t)).sort(),
+  ];
+  list.innerHTML = orderedTags.map(t => {
+    const esc = t.replace(/'/g,"\\'");
+    return `
+    <label class="tagpanel-row">
+      <input type="checkbox" ${nbTagFilter.has(t)?'checked':''} onchange="toggleNbTagCheckbox('${esc}')">
+      <span class="tagpanel-row-name">${t}</span>
+      <span class="tagpanel-row-count">${counts.get(t)}</span>
+    </label>`;
+  }).join('');
+  if(modebar) {
+    modebar.innerHTML = nbTagFilter.size > 1
+      ? `<span>${nbTagFilter.size} 项已选</span><button class="nb-tagfilter-mode-btn" onclick="toggleNbTagFilterMode()">${nbTagFilterMode==='AND'?'同时满足':'任一满足'}</button>`
+      : `<span>${nbTagFilter.size} 项已选</span>`;
+  }
+  if(foot) {
+    foot.innerHTML = `<span class="nb-tagfilter-clear" onclick="clearNbTagFilter()">清除</span><button class="nb-tagpanel-btn" onclick="closeNbTagPanel()">完成</button>`;
+  }
+}
+function openNbTagPanel() {
+  renderNbTagPanelBody();
+  const modal = document.getElementById('tagpanel-modal');
+  if(modal) modal.classList.add('open');
+}
+function closeNbTagPanel(e) {
+  if(!e || e.target === document.getElementById('tagpanel-modal')) {
+    const modal = document.getElementById('tagpanel-modal');
+    if(modal) modal.classList.remove('open');
+  }
 }
 
 // Shared by the notebook tab and the starred (收藏) tab so a starred record renders
