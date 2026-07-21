@@ -209,3 +209,7 @@ alter table public.notebook_entries
 alter table public.notebook_entries
   add column if not exists entry_type text not null default 'experiment';
 alter table public.notebook_entries add column if not exists share_signature jsonb; -- {author, year, show}
+
+-- ── 采集试片来源信息（§2）：{studio, location, date, teacher, firing_temp, notes_raw} ──
+-- notes_raw 是现场原话的逐字记录（"老师说这个要烧两次"之类），不强行拆成结构化字段。
+alter table public.notebook_entries add column if not exists source_info jsonb not null default '{}'::jsonb;

@@ -522,6 +522,19 @@
     border-top: 1px solid var(--nb-line);
     cursor: pointer;
   }
+  /* §2 采集试片: 虚线边框 + "采"角标 + 常驻来源行，让它在列表里一眼和自己的实验区分开 */
+  .nb-card-collected { border-style: dashed; }
+  .nb-collected-badge {
+    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
+    color: var(--ink3); border: 1px dashed var(--line); border-radius: 3px;
+    padding: 1px 5px; flex-shrink: 0;
+  }
+  .nb-collected-source {
+    margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--nb-line);
+  }
+  .nb-collected-source-line { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink2); }
+  .nb-collected-meta-row { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); margin-top: 3px; }
+  .nb-collected-notes-raw { font-size: 13.5px; color: var(--ink2); line-height: 1.7; margin-top: 6px; }
   .chem-panel {
     margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--nb-line);
     font-family: var(--font-mono);
@@ -1243,7 +1256,7 @@
         <button class="io-btn io-btn-import" onclick="document.getElementById('nb-import-input').click()">↑ 导入 JSON</button>
         <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
         <button class="io-btn" id="nb-batch-btn" onclick="toggleNbBatchMode()">☑ 批量</button>
-        <button class="nb-new-btn" onclick="openNbModal(null, null)">＋ 手动新建</button>
+        <button class="nb-new-btn" onclick="openNbTypeChooser()">＋ 手动新建</button>
       </div>
     </div>
     <div class="batch-bar" id="nb-batch-bar" style="display:none">
@@ -1316,6 +1329,58 @@
       <button class="modal-confirm" style="flex:none;width:100%" onclick="sendMagicLink()">发送登录链接</button>
     </div>
     <div id="auth-status" style="margin-top:10px;font-size:0.78rem;color:var(--ink3);min-height:1.2em"></div>
+  </div>
+</div>
+
+<!-- new-record type chooser -->
+<div class="nbmodal-overlay" id="nb-type-modal" onclick="closeNbTypeChooser(event)">
+  <div class="nbmodal" style="width:340px">
+    <h3>新建一条记录</h3>
+    <div class="nbmodal-btns" style="flex-direction:column;gap:10px;margin-top:0.4rem">
+      <button class="nbmodal-confirm" style="flex:none;padding:14px" onclick="chooseNbEntryType('experiment')">我的实验<div style="font-size:0.68rem;opacity:0.75;margin-top:3px;font-family:var(--font-mono)">自己配的釉，进衍生树/反向校准</div></button>
+      <button class="nbmodal-cancel" style="flex:none;padding:14px" onclick="chooseNbEntryType('collected')">采集试片<div style="font-size:0.68rem;color:var(--ink3);margin-top:3px;font-family:var(--font-mono)">别处收集的试片/瓷片，配方备注都可留空</div></button>
+    </div>
+  </div>
+</div>
+
+<!-- collected-specimen entry modal (§2) -->
+<div class="nbmodal-overlay" id="collected-modal" onclick="closeCollectedModal(event)">
+  <div class="nbmodal">
+    <h3>登记采集试片</h3>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">编号（选填）</div>
+    <input type="text" id="cm-num" placeholder="如：岐阜01" maxlength="20" style="width:160px">
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">名称（选填）</div>
+    <input type="text" id="cm-name" placeholder="如：志野白釉试片" maxlength="40">
+
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:14px">来源</div>
+    <div class="nbmodal-row"><span style="font-size:0.72rem;color:var(--ink3);align-self:center">工作室</span><input type="text" id="cm-studio" placeholder="如：某工作室"></div>
+    <div class="nbmodal-row"><span style="font-size:0.72rem;color:var(--ink3);align-self:center">地点</span><input type="text" id="cm-location" placeholder="如：岐阜"></div>
+    <div class="nbmodal-row"><span style="font-size:0.72rem;color:var(--ink3);align-self:center">日期</span><input type="text" id="cm-date" placeholder="如：2026.07"></div>
+    <div class="nbmodal-row"><span style="font-size:0.72rem;color:var(--ink3);align-self:center">老师</span><input type="text" id="cm-teacher" placeholder="选填"></div>
+    <div class="nbmodal-row"><span style="font-size:0.72rem;color:var(--ink3);align-self:center">烧成温度</span><input type="text" id="cm-firing-temp" placeholder="如：1230℃，选填"></div>
+
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:14px">现场笔记（原话照抄，不用整理成句）</div>
+    <textarea id="cm-notes-raw" placeholder="如：老师说这个要烧两次；长石好像是釜戸的…" oninput="autoGrowTextarea(this)" style="min-height:120px"></textarea>
+    <button class="btn-ghost" onclick="insertBlankLine('cm-notes-raw')" style="font-size:0.74rem;margin-top:4px;color:var(--ink3)">↵ 插入空行</button>
+
+    <details class="chem-panel" style="margin-top:14px">
+      <summary class="chem-summary">＋ 配方信息（选填，能看出配方再填）</summary>
+      <div class="chem-body">
+        <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">基础原料（份数）</div>
+        <div id="cm-base-wrap"></div>
+        <button class="btn-ghost" onclick="cmAddBase()" style="font-size:0.74rem;margin-top:2px">＋ 原料</button>
+        <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">添加剂（外加%）</div>
+        <div id="cm-add-wrap"></div>
+        <button class="btn-ghost" onclick="cmAddAdditive()" style="font-size:0.74rem;margin-top:2px">＋ 添加剂</button>
+        <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">烧成曲线</div>
+        <select id="cm-firing-curve" style="width:100%"></select>
+      </div>
+    </details>
+
+    <div class="nbmodal-btns">
+      <button class="nbmodal-cancel" onclick="closeCollectedModal()">取消</button>
+      <button class="nbmodal-confirm" onclick="confirmCollectedSave()">存入配方本</button>
+    </div>
   </div>
 </div>
 
@@ -1631,6 +1696,7 @@ function rowToNotebook(row) {
     shareSignature: row.share_signature || null,
     folderId: row.folder_id || null,
     entryType: row.entry_type || 'experiment',
+    sourceInfo: row.source_info || {},
   };
 }
 function rowToFolder(row) {
@@ -2473,7 +2539,7 @@ function sgaInterpretation(sga) {
   return '';
 }
 
-function renderChemPanel(baseIngredients, additivesObj) {
+function renderChemPanel(baseIngredients, additivesObj, collected) {
   const r = computeSegerFormula(baseIngredients, additivesObj);
   if(!r.ok) {
     if(r.reason === 'empty') return '';
@@ -2516,7 +2582,9 @@ function renderChemPanel(baseIngredients, additivesObj) {
       ${colorantRows ? `<div class="chem-col-title" style="margin-top:8px">着色剂外加%</div>${colorantRows}` : ''}
       ${opacifierRows ? `<div class="chem-col-title" style="margin-top:8px">乳浊剂外加%</div>${opacifierRows}` : ''}
       ${r.reliabilityNotes.length ? `<div class="chem-warning" style="margin-top:8px">${r.reliabilityNotes.join('<br>')}</div>` : ''}
-      <div class="chem-note" style="margin-top:6px;display:block">化学指标仅供比较，效果预判需先完成校准（见"规律校准"标签页）</div>
+      ${collected
+        ? `<div class="chem-warning" style="margin-top:6px">外部采集，仅供参考，不进入你的校准数据集</div>`
+        : `<div class="chem-note" style="margin-top:6px;display:block">化学指标仅供比较，效果预判需先完成校准（见"规律校准"标签页）</div>`}
     </div>
   </details>`;
 }
@@ -2652,7 +2720,7 @@ function statRange(nums) {
 }
 function calibReliableGroup(curveId) {
   return notebook
-    .filter(r => r.firingCurveId === curveId && r.dataConfidence === '可靠')
+    .filter(r => r.firingCurveId === curveId && r.dataConfidence === '可靠' && r.entryType !== 'collected')
     .map(rec => ({ rec, seger: computeSegerFormula(rec.baseIngredients, rec.additives) }))
     .filter(x => x.seger.ok);
 }
@@ -2981,6 +3049,102 @@ async function confirmNbSave() {
     b.textContent='已存入 ✓'; b.style.background='rgba(255,255,255,0.3)';
     b.dataset.done=1;
   });
+}
+
+// ── §2 采集试片 (collected specimens): 隔离于自己的实验数据 ──
+// entry_type='collected' 的记录不进衍生树/不参与反向校准/不计入 Seger 数据集统计
+// (见 calibReliableGroup 的 entryType 过滤、nbCardHtml 里跳过 renderGlazeTree/renderChemPanel)。
+// 配方/烧成曲线信息一律选填——只有照片+一句笔记也必须是合法记录，所以这里不对
+// cm-name/cm-num 做非空校验，也不复用手动新建那个和计算器 tab 状态耦合的 modal。
+function openNbTypeChooser() {
+  document.getElementById('nb-type-modal').classList.add('open');
+}
+function closeNbTypeChooser(e) {
+  if(!e || e.target===document.getElementById('nb-type-modal')) {
+    document.getElementById('nb-type-modal').classList.remove('open');
+  }
+}
+function chooseNbEntryType(type) {
+  closeNbTypeChooser();
+  if(type === 'collected') openCollectedModal();
+  else openNbModal(null, null);
+}
+
+let cmBase = [];
+let cmAdditives = [];
+function openCollectedModal() {
+  ['cm-num','cm-name','cm-studio','cm-location','cm-date','cm-teacher','cm-firing-temp','cm-notes-raw'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  autoGrowTextarea(document.getElementById('cm-notes-raw'));
+  document.getElementById('cm-firing-curve').innerHTML = firingCurveOptionsHtml(null);
+  cmBase = [];
+  cmAdditives = [];
+  renderCmBase();
+  renderCmAdditives();
+  document.getElementById('collected-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('cm-name').focus(), 50);
+}
+function closeCollectedModal(e) {
+  if(!e || e.target===document.getElementById('collected-modal')) {
+    document.getElementById('collected-modal').classList.remove('open');
+  }
+}
+function renderCmBase() {
+  const w = document.getElementById('cm-base-wrap');
+  w.innerHTML = cmBase.map((ing,i) => `
+    <div class="nb-additive-edit-row">
+      <input type="text" value="${ing.name}" placeholder="原料名称" oninput="cmBase[${i}].name=this.value">
+      <input type="number" value="${ing.parts}" min="0" step="0.1" placeholder="份数" oninput="cmBase[${i}].parts=parseFloat(this.value)||0">
+      <button class="btn-icon" onclick="cmBase.splice(${i},1);renderCmBase()" title="删除">×</button>
+    </div>
+  `).join('');
+}
+function cmAddBase() { cmBase.push({name:'', parts:0}); renderCmBase(); }
+function renderCmAdditives() {
+  const w = document.getElementById('cm-add-wrap');
+  w.innerHTML = cmAdditives.map((a,i) => `
+    <div class="nb-additive-edit-row">
+      <input type="text" value="${a.name}" placeholder="添加剂名称" oninput="cmAdditives[${i}].name=this.value">
+      <input type="number" value="${a.pct}" min="0" step="0.001" placeholder="外加%" oninput="cmAdditives[${i}].pct=parseFloat(this.value)||0">
+      <button class="btn-icon" onclick="cmAdditives.splice(${i},1);renderCmAdditives()" title="删除">×</button>
+    </div>
+  `).join('');
+}
+function cmAddAdditive() { cmAdditives.push({name:'', pct:0}); renderCmAdditives(); }
+
+async function confirmCollectedSave() {
+  const num = document.getElementById('cm-num').value.trim();
+  const name = document.getElementById('cm-name').value.trim();
+  const sourceInfo = {
+    studio: document.getElementById('cm-studio').value.trim(),
+    location: document.getElementById('cm-location').value.trim(),
+    date: document.getElementById('cm-date').value.trim(),
+    teacher: document.getElementById('cm-teacher').value.trim(),
+    firing_temp: document.getElementById('cm-firing-temp').value.trim(),
+    notes_raw: document.getElementById('cm-notes-raw').value.trim(),
+  };
+  const additives = {};
+  cmAdditives.forEach(a => { if(a.name.trim()) additives[a.name.trim()] = a.pct; });
+  const baseIngredientsPayload = cmBase.filter(i => i.name.trim()).map(i => ({...i}));
+  const firingCurveId = document.getElementById('cm-firing-curve').value || null;
+
+  const payload = {
+    num, name: name || '（未命名采集试片）', note: '',
+    base_ingredients: baseIngredientsPayload, base_dry: 0, base_water: 0,
+    glazes: [], additives,
+    firing_curve_id: firingCurveId,
+    entry_type: 'collected',
+    source_info: sourceInfo,
+    folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
+  };
+  const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
+  if(error) { alert('保存失败：'+error.message); return; }
+  notebook.unshift(rowToNotebook(data));
+
+  updateNbBadge();
+  document.getElementById('collected-modal').classList.remove('open');
+  renderNbAndFav();
 }
 
 // Notebook cards only ever showed the flat baseIngredients/additives of a record —
@@ -3468,6 +3632,8 @@ function closeNbTagPanel(e) {
 // (switchTab only toggles .active), so reusing bare ids for the same record in both
 // would collide and break the name/note inline editors and photo-upload buttons.
 function nbCardHtml(rec, ni, idPrefix) {
+  const isCollected = rec.entryType === 'collected';
+  const si = rec.sourceInfo || {};
   const baseTags = (rec.baseIngredients||[]).map(i=>
     `<span class="nb-ingredient-tag">${i.name} ${i.parts}</span>`
   ).join('');
@@ -3482,15 +3648,25 @@ function nbCardHtml(rec, ni, idPrefix) {
   const effectTagsHtml = (rec.effectTags||[]).length
     ? `<span class="nb-effect-tags">${rec.effectTags.map(t=>`<span class="nb-effect-tag">◇ ${t}</span>`).join('')}</span>`
     : '';
+  // §2 采集试片：来源信息常驻显示（不折叠），让它在列表里一眼和自己的实验区分开
+  const sourcePlace = [si.location, si.studio].filter(Boolean).join('·');
+  const sourceLine = [sourcePlace, si.date].filter(Boolean).join(' · ') || '来源未记录';
+  const collectedSourceHtml = isCollected ? `
+    <div class="nb-collected-source">
+      <div class="nb-collected-source-line">${sourceLine}</div>
+      ${si.teacher || si.firing_temp ? `<div class="nb-collected-meta-row">${[si.teacher?`指导：${si.teacher}`:'', si.firing_temp?`烧成：${si.firing_temp}`:''].filter(Boolean).join(' · ')}</div>` : ''}
+      ${si.notes_raw ? `<div class="nb-collected-notes-raw" style="white-space:pre-wrap">${si.notes_raw}</div>` : ''}
+    </div>` : '';
   // batch-select is a notebook-tab-only UI mode; the starred tab has no batch bar
   const showBatchUi = idPrefix === 'nb' && nbBatchMode;
 
   return `
-    <div class="nb-card ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
+    <div class="nb-card ${isCollected ? 'nb-card-collected' : ''} ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
       <div class="nb-card-head">
         <div class="nb-head-row1">
           ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
           <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
+          ${isCollected ? `<span class="nb-collected-badge" title="采集试片">采</span>` : ''}
           ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
           <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
           <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
@@ -3512,12 +3688,12 @@ function nbCardHtml(rec, ni, idPrefix) {
         </div>
       </div>
       <div class="nb-body">
-        <div class="nb-section-label">基础原料</div>
-        <div class="nb-row">${baseTags}</div>
+        ${collectedSourceHtml}
+        ${(!isCollected || baseTags) ? `<div class="nb-section-label">基础原料</div><div class="nb-row">${baseTags}</div>` : ''}
         ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
         ${metaBadges ? `<div class="nb-row" style="margin-top:4px">${metaBadges}</div>` : ''}
-        ${renderChemPanel(rec.baseIngredients, rec.additives)}
-        ${renderGlazeTree(rec)}
+        ${renderChemPanel(rec.baseIngredients, rec.additives, isCollected)}
+        ${!isCollected ? renderGlazeTree(rec) : ''}
         <div id="${idPrefix}note-display-${ni}" onclick="editNbNote(${ni},'${idPrefix}')" style="cursor:pointer">
           ${rec.note
             ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>`
@@ -3734,6 +3910,8 @@ function importNotebook(input) {
           })),
           additives: rec.additives||{}, photos: [],
           folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
+          entry_type: rec.entryType || 'experiment',
+          source_info: rec.sourceInfo || {},
         };
         const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
         if(error) continue;
