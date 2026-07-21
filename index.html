@@ -900,6 +900,71 @@
     font-family: var(--font-mono); font-size: 0.72rem;
   }
 
+  /* ── 文件夹切换（配方本顶部，标签导航下方）：文件夹管归属，标签管主题，两者互不干扰 ── */
+  .nb-folderbar {
+    display: flex; align-items: center; gap: 6px; overflow-x: auto;
+    padding: 2px 2px 10px; -webkit-overflow-scrolling: touch;
+  }
+  .nb-folderbar::-webkit-scrollbar { display: none; }
+  .nb-folder-pill {
+    flex-shrink: 0; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink2); font-family: var(--font-mono); font-size: 0.72rem;
+    letter-spacing: 0.02em; cursor: pointer; white-space: nowrap; transition: all 0.12s;
+  }
+  .nb-folder-pill:hover { border-color: var(--ink3); }
+  .nb-folder-pill.active { background: var(--accent); color: var(--card); border-color: var(--accent); }
+  .nb-folder-manage-btn {
+    flex-shrink: 0; padding: 5px 10px; border-radius: 999px; border: 1px dashed var(--line);
+    background: none; color: var(--ink3); font-family: var(--font-mono); font-size: 0.72rem;
+    cursor: pointer; white-space: nowrap; transition: all 0.12s;
+  }
+  .nb-folder-manage-btn:hover { color: var(--ink); border-color: var(--ink3); }
+
+  /* ── 文件夹选择器（单条 / 批量「移动到…」共用同一个弹层）── */
+  .folderpicker-list { overflow: auto; padding: 0.6rem 0.6rem 1rem; display: flex; flex-direction: column; }
+  .folderpicker-row {
+    display: flex; align-items: center; gap: 9px; padding: 9px 0.8rem;
+    border-radius: 5px; cursor: pointer; font-family: var(--font-serif); font-size: 0.86rem;
+    color: var(--ink2); transition: background 0.12s;
+  }
+  .folderpicker-row:hover { background: var(--bg2); }
+  .folderpicker-row-count { margin-left: auto; font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); }
+  .folderpicker-preview-note {
+    padding: 0 1.4rem 0.6rem; font-size: 0.78rem; color: var(--ink2); font-family: var(--font-serif);
+  }
+  .folderpicker-preview-list { overflow: auto; padding: 0 1.4rem 0.6rem; display: flex; flex-direction: column; gap: 4px; }
+  .folderpicker-preview-item {
+    font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink2);
+    padding: 5px 0; border-bottom: 1px solid var(--line);
+  }
+  .folderpicker-foot {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    padding: 0.9rem 1.4rem; border-top: 1px solid var(--line);
+  }
+
+  /* ── 文件夹管理（新建 / 重命名 / 删除 / 排序）── */
+  .foldermanage-new-row { display: flex; gap: 8px; padding: 0.8rem 1.4rem 0.6rem; }
+  .foldermanage-new-row input {
+    flex: 1; font-size: 0.82rem; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px;
+    background: var(--bg); color: var(--ink); font-family: var(--font-serif);
+  }
+  .foldermanage-list { overflow: auto; padding: 0.4rem 0.6rem 1rem; display: flex; flex-direction: column; gap: 2px; }
+  .foldermanage-row { display: flex; align-items: center; gap: 6px; padding: 7px 0.8rem; border-radius: 5px; }
+  .foldermanage-row:hover { background: var(--bg2); }
+  .foldermanage-row-name {
+    flex: 1; font-family: var(--font-serif); font-size: 0.85rem; color: var(--ink2);
+    border: 1px solid transparent; border-radius: 4px; padding: 3px 6px; background: none; min-width: 0;
+  }
+  .foldermanage-row-name:hover, .foldermanage-row-name:focus { border-color: var(--line); background: var(--bg); }
+  .foldermanage-row-count { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); white-space: nowrap; }
+  .foldermanage-row-btn {
+    background: none; border: none; color: var(--ink3); cursor: pointer; font-size: 0.8rem;
+    padding: 2px 5px; line-height: 1; transition: color 0.12s; flex-shrink: 0;
+  }
+  .foldermanage-row-btn:hover { color: var(--ink); }
+  .foldermanage-row-btn.danger:hover { color: var(--danger); }
+  .foldermanage-row.unfiled .foldermanage-row-name { color: var(--ink3); font-style: italic; }
+
   /* ── photo gallery: full-width strip at top of card, photos are the star ── */
   .photo-gallery {
     margin-top: 10px; padding-top: 10px;
@@ -1187,11 +1252,13 @@
       <span class="import-hint" id="nb-batch-count-label">已选 0 条</span>
       <div class="nb-toolbar-right">
         <button class="io-btn io-btn-export" id="nb-compare-btn" onclick="openCompareModal()" disabled>⚖ 对比选中项</button>
+        <button class="io-btn io-btn-export" onclick="openFolderPicker('batch', [...nbSelectedIds])">移动到…</button>
         <button class="io-btn" style="color:var(--ink);border-color:var(--line)" onclick="deleteNbBatch()">删除选中</button>
         <button class="io-btn io-btn-export" onclick="toggleNbBatchMode()">取消</button>
       </div>
     </div>
     <div id="nb-tagfilter-container"></div>
+    <div id="nb-folderbar-container"></div>
     <div id="nb-list"></div>
   </div>
 </div>
@@ -1350,6 +1417,33 @@
   </div>
 </div>
 
+<!-- folder picker: single-record "移动到…" (executes immediately) and batch "移动到…"
+     (shows a dry-run preview before writing) share this one modal, switched by folderPickerMode -->
+<div class="tagpanelmodal-overlay" id="folderpicker-modal" onclick="closeFolderPicker(event)">
+  <div class="tagpanelmodal" onclick="event.stopPropagation()">
+    <div class="tagpanelmodal-head">
+      <h3 id="folderpicker-title">移动到…</h3>
+      <button class="tagpanelmodal-close" onclick="closeFolderPicker()">✕</button>
+    </div>
+    <div id="folderpicker-body"></div>
+  </div>
+</div>
+
+<!-- folder management: create / rename / delete / reorder -->
+<div class="tagpanelmodal-overlay" id="foldermanage-modal" onclick="closeFolderManage(event)">
+  <div class="tagpanelmodal" onclick="event.stopPropagation()">
+    <div class="tagpanelmodal-head">
+      <h3>管理文件夹</h3>
+      <button class="tagpanelmodal-close" onclick="closeFolderManage()">✕</button>
+    </div>
+    <div class="foldermanage-new-row">
+      <input type="text" id="foldermanage-new-input" placeholder="新建文件夹，如「岐阜 2026.07」" onkeydown="if(event.key==='Enter')createFolder()">
+      <button class="nb-tagpanel-btn" onclick="createFolder()">＋ 新建</button>
+    </div>
+    <div class="foldermanage-list" id="foldermanage-list"></div>
+  </div>
+</div>
+
 <!-- update-to-notebook picker modal -->
 <div class="updmodal-overlay" id="upd-modal" onclick="closeUpdModal(event)">
   <div class="updmodal">
@@ -1479,6 +1573,15 @@ let nbActiveEditNum = null;
 let materials = [];
 let firingCurves = [];
 
+// ── 档案册（文件夹）：文件夹管归属，标签管主题——两个筛选维度各自独立、可同时生效 ──
+let folders = [];
+const NB_UNFILED = '__unfiled__'; // sentinel for "未分类" (folder_id is null), distinct from
+                                   // nbActiveFolderId===null which means "全部" (no folder filter)
+let nbActiveFolderId = null;
+let folderPickerMode = null; // 'single' | 'batch'
+let folderPickerIds = [];
+let folderPickerPendingFolderId; // batch 第二步（dry-run 预览）里已选中的目标 folder_id；undefined = 还在选目标
+
 // ── auth ──
 async function sendMagicLink() {
   const email = document.getElementById('auth-email').value.trim();
@@ -1526,7 +1629,12 @@ function rowToNotebook(row) {
     shareNote: row.share_note || '',
     shareEnglishName: row.share_english_name || '',
     shareSignature: row.share_signature || null,
+    folderId: row.folder_id || null,
+    entryType: row.entry_type || 'experiment',
   };
+}
+function rowToFolder(row) {
+  return { id: row.id, name: row.name, note: row.note||'', sortOrder: row.sort_order||0 };
 }
 function rowToHistory(row) {
   return {
@@ -1553,16 +1661,21 @@ function rowToFiringCurve(row) {
 
 // ── boot: fetch everything for the signed-in user, then render ──
 async function boot() {
-  const [nbRes, histRes, matRes, fcRes] = await Promise.all([
+  const [nbRes, histRes, matRes, fcRes, folderRes] = await Promise.all([
     sb.from('notebook_entries').select('*').order('created_at', {ascending:false}),
     sb.from('history_entries').select('*').order('created_at', {ascending:false}).limit(50),
     sb.from('materials').select('*').order('name'),
     sb.from('firing_curves').select('*').order('name'),
+    sb.from('folders').select('*').order('sort_order'),
   ]);
   notebook = (nbRes.data||[]).map(rowToNotebook);
   history = (histRes.data||[]).map(rowToHistory);
   materials = (matRes.data||[]).map(rowToMaterial);
   firingCurves = (fcRes.data||[]).map(rowToFiringCurve);
+  // folderRes.error is expected (and silently ignored) until the user has run the §1
+  // folders migration SQL in Supabase — the app must keep working with an empty folder
+  // list ("全部"/"未分类" only) rather than throwing before that migration lands.
+  folders = (folderRes.data||[]).map(rowToFolder);
 
   // First login for this account: give them a starting materials library (typical
   // textbook values, all flagged source:'typical'/verified:false) instead of an empty
@@ -2850,6 +2963,8 @@ async function confirmNbSave() {
       })) : [],
       additives,
       firing_curve_id: firingCurveId, data_confidence: dataConfidence, effect_tags: effectTags,
+      // 新建记录默认落在当前正在查看的文件夹；查看「全部」或「未分类」时落在未分类
+      folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
     };
     const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
     if(error) { alert('保存失败：'+error.message); return; }
@@ -3002,27 +3117,244 @@ function onNbSearchInput(v) {
   renderNotebook();
 }
 
+// 文件夹（归属）→ 标签（主题）→ 搜索：三层依次收窄，互相独立、可同时生效。
+function filterByFolder(records, activeFolderId) {
+  if(activeFolderId === null) return records;
+  if(activeFolderId === NB_UNFILED) return records.filter(r => !r.folderId);
+  return records.filter(r => r.folderId === activeFolderId);
+}
 function renderNotebook() {
   const wrap = document.getElementById('nb-list');
   const countEl = document.getElementById('nb-toolbar-count');
   if(countEl) countEl.textContent = notebook.length > 0 ? `共 ${notebook.length} 条配方` : '';
+  renderNbFolderBar();
   renderNbTagFilterBar();
   if(notebook.length===0) {
     wrap.innerHTML = `<div class="nb-empty"><div class="big">册</div>配方本是空的<br>从计算结果「存入配方本」，或点右上角手动新建</div>`;
     return;
   }
-  const tagFiltered = filterByTags(notebook, nbTagFilter, nbTagFilterMode);
+  const folderFiltered = filterByFolder(notebook, nbActiveFolderId);
+  const tagFiltered = filterByTags(folderFiltered, nbTagFilter, nbTagFilterMode);
   const filtered = nbSearchQuery ? tagFiltered.filter(r => matchesNbSearch(r, nbSearchQuery)) : tagFiltered;
-  if(filtered.length === 0 && (nbTagFilter.size > 0 || nbSearchQuery)) {
-    const tagMsg = nbTagFilterMode === 'OR' ? '没有满足任一所选标签的釉' : '没有同时满足这些标签的釉';
-    const msg = nbSearchQuery ? (tagFiltered.length === 0 ? tagMsg : '没有匹配搜索内容的釉') : tagMsg;
-    wrap.innerHTML = `<div class="nb-empty"><div class="big">◇</div>${msg}</div>`;
-    updateNbBatchCount();
-    return;
+  if(filtered.length === 0) {
+    let msg = '';
+    if(nbTagFilter.size > 0 || nbSearchQuery) {
+      const tagMsg = nbTagFilterMode === 'OR' ? '没有满足任一所选标签的釉' : '没有同时满足这些标签的釉';
+      msg = nbSearchQuery ? (tagFiltered.length === 0 ? tagMsg : '没有匹配搜索内容的釉') : tagMsg;
+    } else if(folderFiltered.length === 0) {
+      msg = '这个文件夹还没有记录';
+    }
+    if(msg) {
+      wrap.innerHTML = `<div class="nb-empty"><div class="big">◇</div>${msg}</div>`;
+      updateNbBatchCount();
+      return;
+    }
   }
   const keepIds = new Set(filtered.map(r=>r.id));
   wrap.innerHTML = notebook.map((rec,ni) => keepIds.has(rec.id) ? nbCardHtml(rec, ni, 'nb') : '').join('');
   updateNbBatchCount();
+}
+
+// ── 文件夹切换栏：全部 | 各文件夹(条目数) | 未分类(条目数) | ⚙ 管理 ──
+// 计数始终基于全量 notebook（不随标签/搜索变化），和「更多筛选」弹层里标签计数的口径一致。
+function renderNbFolderBar() {
+  const container = document.getElementById('nb-folderbar-container');
+  if(!container) return;
+  if(folders.length === 0 && notebook.every(r => !r.folderId)) {
+    // Nothing archived yet: offer the one-time migration into the confirmed default
+    // folder instead of showing an otherwise-empty switcher with nothing to switch to.
+    container.innerHTML = notebook.length > 0
+      ? `<div class="nb-folderbar"><button class="nb-folder-manage-btn" onclick="runInitialFolderMigration()">现有 ${notebook.length} 条记录尚未归档 → 归入「景德镇 2026.05」</button>
+         <button class="nb-folder-manage-btn" onclick="openFolderManage()">⚙ 管理文件夹</button></div>`
+      : '';
+    return;
+  }
+  const unfiledCount = notebook.filter(r => !r.folderId).length;
+  const pills = [`<button class="nb-folder-pill ${nbActiveFolderId===null?'active':''}" onclick="selectNbFolder(null)">全部</button>`]
+    .concat(folders.map(f => {
+      const count = notebook.filter(r => r.folderId === f.id).length;
+      const active = nbActiveFolderId === f.id;
+      return `<button class="nb-folder-pill ${active?'active':''}" onclick="selectNbFolder('${f.id}')">${f.name} (${count})</button>`;
+    }));
+  if(unfiledCount > 0 || folders.length === 0) {
+    pills.push(`<button class="nb-folder-pill ${nbActiveFolderId===NB_UNFILED?'active':''}" onclick="selectNbFolder('${NB_UNFILED}')">未分类 (${unfiledCount})</button>`);
+  }
+  container.innerHTML = `<div class="nb-folderbar">${pills.join('')}<button class="nb-folder-manage-btn" onclick="openFolderManage()">⚙ 管理</button></div>`;
+}
+function selectNbFolder(folderId) {
+  nbActiveFolderId = folderId;
+  renderNotebook();
+}
+
+function folderNameOf(folderId) {
+  if(!folderId) return '未分类';
+  return folders.find(f => f.id === folderId)?.name || '未分类';
+}
+
+// 移动只改 folder_id 一个字段，不动其它任何数据——归档操作不得误伤既有数据。
+async function moveRecordsToFolder(ids, folderId) {
+  const { error } = await sb.from('notebook_entries').update({ folder_id: folderId }).in('id', ids);
+  if(error) { alert('移动失败：'+error.message); return false; }
+  ids.forEach(id => { const rec = notebook.find(r => r.id === id); if(rec) rec.folderId = folderId; });
+  return true;
+}
+
+// 单条「移动到…」直接执行；批量「移动到…」是高风险操作，选完目标后先 dry-run 预览
+// （列出编号+名称、从哪移到哪），用户确认后才真正写库。两种模式共用同一个弹层/同一套目标列表。
+function openFolderPicker(mode, ids) {
+  folderPickerMode = mode;
+  folderPickerIds = ids;
+  folderPickerPendingFolderId = undefined;
+  document.getElementById('folderpicker-title').textContent = mode === 'batch' ? `移动 ${ids.length} 条到…` : '移动到…';
+  renderFolderPickerBody();
+  document.getElementById('folderpicker-modal').classList.add('open');
+}
+function closeFolderPicker(e) {
+  if(!e || e.target === document.getElementById('folderpicker-modal')) {
+    document.getElementById('folderpicker-modal').classList.remove('open');
+    folderPickerMode = null; folderPickerIds = []; folderPickerPendingFolderId = undefined;
+  }
+}
+function renderFolderPickerBody() {
+  const body = document.getElementById('folderpicker-body');
+  if(!body) return;
+  const options = [{ id: null, name: '未分类' }, ...folders];
+  body.innerHTML = `
+    <div class="folderpicker-list">
+      ${options.map(f => `<div class="folderpicker-row" onclick="pickFolderPickerTarget(${f.id===null?'null':`'${f.id}'`})"><span>${f.name}</span></div>`).join('')}
+    </div>`;
+}
+async function pickFolderPickerTarget(folderId) {
+  if(folderPickerMode === 'single') {
+    const ok = await moveRecordsToFolder(folderPickerIds, folderId);
+    if(ok) { closeFolderPicker(); renderNbAndFav(); }
+    return;
+  }
+  // batch: don't write yet — show the dry-run preview first
+  folderPickerPendingFolderId = folderId;
+  const targetName = folderNameOf(folderId);
+  const body = document.getElementById('folderpicker-body');
+  const rows = folderPickerIds.map(id => notebook.find(r => r.id === id)).filter(Boolean);
+  body.innerHTML = `
+    <div class="folderpicker-preview-note">以下 ${rows.length} 条将移到【${targetName}】：</div>
+    <div class="folderpicker-preview-list">
+      ${rows.map(r => `<div class="folderpicker-preview-item">${r.num ? r.num+' · ' : ''}${r.name}　（${folderNameOf(r.folderId)} → ${targetName}）</div>`).join('')}
+    </div>
+    <div class="folderpicker-foot">
+      <button class="io-btn io-btn-export" onclick="renderFolderPickerBody()">返回重选</button>
+      <button class="nb-tagpanel-btn" onclick="confirmFolderPickerBatchMove()">确认移动</button>
+    </div>`;
+}
+async function confirmFolderPickerBatchMove() {
+  const ok = await moveRecordsToFolder(folderPickerIds, folderPickerPendingFolderId);
+  if(ok) {
+    closeFolderPicker();
+    nbSelectedIds.clear();
+    updateNbBatchCount();
+    renderNbAndFav();
+  }
+}
+
+// ── 文件夹管理：新建 / 重命名 / 删除 / 排序 ──
+function openFolderManage() {
+  renderFolderManageBody();
+  document.getElementById('foldermanage-modal').classList.add('open');
+}
+function closeFolderManage(e) {
+  if(!e || e.target === document.getElementById('foldermanage-modal')) {
+    document.getElementById('foldermanage-modal').classList.remove('open');
+  }
+}
+function renderFolderManageBody() {
+  const list = document.getElementById('foldermanage-list');
+  if(!list) return;
+  const unfiledCount = notebook.filter(r => !r.folderId).length;
+  const rows = folders.map((f, idx) => {
+    const count = notebook.filter(r => r.folderId === f.id).length;
+    return `
+    <div class="foldermanage-row">
+      <button class="foldermanage-row-btn" title="上移" ${idx===0?'disabled style="opacity:.3"':''} onclick="moveFolderOrder('${f.id}',-1)">↑</button>
+      <button class="foldermanage-row-btn" title="下移" ${idx===folders.length-1?'disabled style="opacity:.3"':''} onclick="moveFolderOrder('${f.id}',1)">↓</button>
+      <input class="foldermanage-row-name" value="${f.name.replace(/"/g,'&quot;')}" onchange="renameFolder('${f.id}', this.value)">
+      <span class="foldermanage-row-count">${count} 条</span>
+      <button class="foldermanage-row-btn danger" title="删除文件夹（记录不会被删除，转入未分类）" onclick="deleteFolder('${f.id}')">删除</button>
+    </div>`;
+  }).join('');
+  list.innerHTML = rows + `
+    <div class="foldermanage-row unfiled">
+      <span class="foldermanage-row-name">未分类</span>
+      <span class="foldermanage-row-count">${unfiledCount} 条</span>
+    </div>`;
+}
+async function createFolder() {
+  const input = document.getElementById('foldermanage-new-input');
+  const name = input.value.trim();
+  if(!name) { input.focus(); return; }
+  const sortOrder = folders.length ? Math.max(...folders.map(f=>f.sortOrder)) + 1 : 0;
+  const { data, error } = await sb.from('folders').insert({ name, sort_order: sortOrder }).select().single();
+  if(error) { alert('新建失败：'+error.message); return; }
+  folders.push(rowToFolder(data));
+  input.value = '';
+  renderFolderManageBody();
+  renderNotebook();
+}
+async function renameFolder(id, name) {
+  name = name.trim();
+  const f = folders.find(x => x.id === id);
+  if(!f || !name || name === f.name) { renderFolderManageBody(); return; }
+  const { error } = await sb.from('folders').update({ name }).eq('id', id);
+  if(error) { alert('重命名失败：'+error.message); renderFolderManageBody(); return; }
+  f.name = name;
+  renderFolderManageBody();
+  renderNotebook();
+}
+async function deleteFolder(id) {
+  const f = folders.find(x => x.id === id);
+  if(!f) return;
+  const count = notebook.filter(r => r.folderId === id).length;
+  if(!confirm(`删除文件夹「${f.name}」？\n\n里面的 ${count} 条记录不会被删除，会转入「未分类」。`)) return;
+  const { error } = await sb.from('folders').delete().eq('id', id);
+  if(error) { alert('删除失败：'+error.message); return; }
+  folders = folders.filter(x => x.id !== id);
+  // DB 侧 on delete set null 已经把这些记录的 folder_id 清空了，本地状态同步一致
+  notebook.forEach(r => { if(r.folderId === id) r.folderId = null; });
+  if(nbActiveFolderId === id) nbActiveFolderId = null;
+  renderFolderManageBody();
+  renderNbAndFav();
+}
+async function moveFolderOrder(id, dir) {
+  const idx = folders.findIndex(f => f.id === id);
+  const swapIdx = idx + dir;
+  if(idx < 0 || swapIdx < 0 || swapIdx >= folders.length) return;
+  [folders[idx].sortOrder, folders[swapIdx].sortOrder] = [folders[swapIdx].sortOrder, folders[idx].sortOrder];
+  [folders[idx], folders[swapIdx]] = [folders[swapIdx], folders[idx]];
+  await Promise.all([
+    sb.from('folders').update({ sort_order: folders[idx].sortOrder }).eq('id', folders[idx].id),
+    sb.from('folders').update({ sort_order: folders[swapIdx].sortOrder }).eq('id', folders[swapIdx].id),
+  ]);
+  renderFolderManageBody();
+  renderNotebook();
+}
+
+// 一次性迁移：现有记录都还没有文件夹时，按 §0 已确认的命名归入默认文件夹。
+// 先 dry-run 预览、确认后再执行；只写 folder_id 一个字段。
+async function runInitialFolderMigration() {
+  const targets = notebook.filter(r => !r.folderId);
+  if(targets.length === 0) return;
+  const preview = targets.map(r => `${r.num ? r.num+' · ' : ''}${r.name}`).join('\n');
+  const proceed = confirm(
+    `以下 ${targets.length} 条将归入新建文件夹「景德镇 2026.05」：\n\n${preview}\n\n确认执行？`
+  );
+  if(!proceed) return;
+  let folder = folders.find(f => f.name === '景德镇 2026.05');
+  if(!folder) {
+    const { data, error } = await sb.from('folders').insert({ name: '景德镇 2026.05', sort_order: 0 }).select().single();
+    if(error) { alert('创建文件夹失败：'+error.message); return; }
+    folder = rowToFolder(data);
+    folders.push(folder);
+  }
+  const ok = await moveRecordsToFolder(targets.map(r => r.id), folder.id);
+  if(ok) renderNbAndFav();
 }
 
 // Segmented "quick" bar (fixed categories) + 筛选 launcher button. Both this bar and the
@@ -3175,6 +3507,7 @@ function nbCardHtml(rec, ni, idPrefix) {
           <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
           <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
           <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
+          <button class="nb-load-btn" onclick="openFolderPicker('single', ['${rec.id}'])">移动到…</button>
           <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
         </div>
       </div>
@@ -3400,6 +3733,7 @@ function importNotebook(input) {
             sourceName: g.sourceName || (g.sourceId===null ? '基础釉' : (importedGlazes.find(x=>x.stepId===g.sourceId)?.name || null)),
           })),
           additives: rec.additives||{}, photos: [],
+          folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
         };
         const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
         if(error) continue;

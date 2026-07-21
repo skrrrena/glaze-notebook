@@ -184,3 +184,28 @@ alter table public.notebook_entries add column if not exists share_image jsonb; 
 alter table public.notebook_entries add column if not exists share_note text not null default ''; -- 分享用心得，独立于 note（私人笔记）
 alter table public.notebook_entries add column if not exists share_english_name text not null default ''; -- 手动填写，不做拼音自动转换；留空则分享卡不渲染该行
 alter table public.notebook_entries add column if not exists share_signature jsonb; -- {author, year, show}
+
+-- ── 档案册（文件夹）：只管来源/归属，不管主题（标签管主题）──
+create table public.folders (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  name        text not null,
+  note        text default '',
+  sort_order  integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index folders_user_id_idx on public.folders(user_id);
+alter table public.folders enable row level security;
+create policy "folders select own" on public.folders for select using (auth.uid() = user_id);
+create policy "folders insert own" on public.folders for insert with check (auth.uid() = user_id);
+create policy "folders update own" on public.folders for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "folders delete own" on public.folders for delete using (auth.uid() = user_id);
+
+-- notebook_entries: 一条记录有且只有一个 folder（客观归属），用 uuid 引用，绝不用 num 做标识。
+-- on delete set null：删文件夹不删数据，记录退回「未分类」。
+alter table public.notebook_entries
+  add column if not exists folder_id uuid references public.folders(id) on delete set null;
+-- 'experiment'（自己的实验，走 Seger/反向校准）｜'collected'（采集试片，隔离于校准数据集，§2 采集试片阶段用）
+alter table public.notebook_entries
+  add column if not exists entry_type text not null default 'experiment';
+alter table public.notebook_entries add column if not exists share_signature jsonb; -- {author, year, show}
