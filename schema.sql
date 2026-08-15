@@ -219,3 +219,40 @@ alter table public.notebook_entries add column if not exists source_info jsonb n
 alter table public.notebook_entries add column if not exists status text not null default 'done'; -- 'done' | 'planned'
 -- 试验计划文本（泥料/梯度/厚度/注意事项等），与烧成后的结果笔记（note）分开，避免互相覆盖。
 alter table public.notebook_entries add column if not exists plan_notes text;
+
+-- ── 复合釉试片（§B）：entry_type='composite_test'，叠釉关系用独立表建模，不进衍生树/校准/Seger 数据集。 ──
+create table public.composite_glazes (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null default auth.uid(),
+  name         text not null,
+  brand        text,
+  product_code text,
+  color_family text,
+  notes        text,
+  created_at   timestamptz not null default now()
+);
+alter table public.composite_glazes enable row level security;
+create policy "cg select own" on public.composite_glazes for select using (auth.uid() = user_id);
+create policy "cg insert own" on public.composite_glazes for insert with check (auth.uid() = user_id);
+create policy "cg update own" on public.composite_glazes for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "cg delete own" on public.composite_glazes for delete using (auth.uid() = user_id);
+
+-- layer_order: 1 = 最底层/最先施；数字递增 = 越往上/越后施。on delete restrict：
+-- 釉库里的釉若被试片引用则禁止删除，前端捕获错误友好提示。
+create table public.composite_layers (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid(),
+  entry_id    uuid not null references public.notebook_entries(id) on delete cascade,
+  glaze_id    uuid not null references public.composite_glazes(id) on delete restrict,
+  layer_order int not null,
+  application text,
+  created_at  timestamptz not null default now()
+);
+alter table public.composite_layers enable row level security;
+create policy "cl select own" on public.composite_layers for select using (auth.uid() = user_id);
+create policy "cl insert own" on public.composite_layers for insert with check (auth.uid() = user_id);
+create policy "cl update own" on public.composite_layers for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "cl delete own" on public.composite_layers for delete using (auth.uid() = user_id);
+
+alter table public.notebook_entries add column if not exists clay_body text; -- 泥料
+alter table public.notebook_entries add column if not exists firing text;    -- 烧成，先用文本，后续接烧成曲线系统

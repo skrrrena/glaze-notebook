@@ -535,6 +535,16 @@
     color: var(--accent); border: 1px solid var(--accent); border-radius: 3px;
     padding: 1px 5px; flex-shrink: 0;
   }
+  /* §B 复合釉试片: 叠成品釉，无配方成分可算，用双线边框和"叠"角标区分 */
+  .nb-card-composite { border-style: double; border-width: 4px; }
+  .nb-composite-badge {
+    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
+    color: var(--nb); border: 1px solid var(--nb); border-radius: 3px;
+    padding: 1px 5px; flex-shrink: 0;
+  }
+  .nb-layer-stack { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 6px 0; font-size: 0.78rem; }
+  .nb-layer-chip { padding: 2px 8px; border-radius: 3px; background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line); }
+  .nb-layer-arrow { color: var(--ink3); font-size: 0.72rem; }
   .nb-collected-source {
     margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--nb-line);
   }
@@ -652,6 +662,9 @@
   .nbmodal-cancel:hover { background: var(--bg2); }
   .nb-additive-editor { margin-top: 8px; }
   .nb-additive-edit-row { display: grid; grid-template-columns: 1fr 90px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .nb-layer-edit-row { display: grid; grid-template-columns: 20px 1fr 90px 24px 24px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .nb-layer-order-num { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink3); text-align: center; }
+  .glazelib-row { display: grid; grid-template-columns: 1fr 80px 28px; gap: 6px; margin-bottom: 6px; align-items: center; font-size: 0.8rem; }
 
   /* share card modal */
   .sharemodal-overlay {
@@ -1188,6 +1201,7 @@
   <button class="tab-btn tab-hist" onclick="switchTab('hist',this)">历史记录 <span id="hist-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-nb" onclick="switchTab('nb',this)">配方本 <span id="nb-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-planned" onclick="switchTab('planned',this)">待试 <span id="planned-count-badge" class="fav-count"></span></button>
+  <button class="tab-btn tab-composite" onclick="switchTab('composite',this)">复合釉 <span id="composite-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-fav" onclick="switchTab('fav',this)">收藏 <span id="fav-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-mat" onclick="switchTab('mat',this)">原料库</button>
   <button class="tab-btn tab-fc" onclick="switchTab('fc',this)">烧成曲线</button>
@@ -1296,6 +1310,20 @@
   </div>
 </div>
 
+<!-- §B 复合釉试片 tab: entry_type='composite_test'（同时也出现在配方本主列表里，这是筛选视图，不是排他分区）-->
+<div class="tab-panel" id="tab-composite">
+  <div class="fav-panel">
+    <div class="fav-toolbar">
+      <span class="import-hint" id="composite-toolbar-count"></span>
+      <div class="fav-toolbar-right">
+        <button class="io-btn" onclick="openGlazeLibraryModal()">⚙ 管理釉库</button>
+        <button class="nb-new-btn" onclick="openCompositeModal()">＋ 新建复合釉试片</button>
+      </div>
+    </div>
+    <div id="composite-list"></div>
+  </div>
+</div>
+
 <!-- starred (favourites) tab -->
 <div class="tab-panel" id="tab-fav">
   <div class="fav-panel">
@@ -1359,6 +1387,71 @@
     <div class="nbmodal-btns" style="flex-direction:column;gap:10px;margin-top:0.4rem">
       <button class="nbmodal-confirm" style="flex:none;padding:14px" onclick="chooseNbEntryType('experiment')">我的实验<div style="font-size:0.68rem;opacity:0.75;margin-top:3px;font-family:var(--font-mono)">自己配的釉，进衍生树/反向校准</div></button>
       <button class="nbmodal-cancel" style="flex:none;padding:14px" onclick="chooseNbEntryType('collected')">采集试片<div style="font-size:0.68rem;color:var(--ink3);margin-top:3px;font-family:var(--font-mono)">别处收集的试片/瓷片，配方备注都可留空</div></button>
+      <button class="nbmodal-cancel" style="flex:none;padding:14px" onclick="chooseNbEntryType('composite_test')">复合釉试片<div style="font-size:0.68rem;color:var(--ink3);margin-top:3px;font-family:var(--font-mono)">自己叠的成品釉组合，按图层记录</div></button>
+    </div>
+  </div>
+</div>
+
+<!-- composite glaze test-tile entry modal (§B) -->
+<div class="nbmodal-overlay" id="composite-modal" onclick="closeCompositeModal(event)">
+  <div class="nbmodal">
+    <h3 id="composite-modal-title">登记复合釉试片</h3>
+    <input type="hidden" id="composite-modal-edit-index" value="">
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">编号（选填）</div>
+    <input type="text" id="composite-num" placeholder="如：叠01" maxlength="20" style="width:160px">
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">名称（选填，留空则按图层自动生成显示名）</div>
+    <input type="text" id="composite-name" placeholder="如：钧红罩透明" maxlength="40">
+
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:14px">图层（打底 → 罩面）</div>
+    <div id="composite-layers-wrap"></div>
+    <button class="btn-ghost" onclick="compositeAddLayer()" style="font-size:0.74rem;margin-top:2px">＋ 图层</button>
+    <button class="btn-ghost" onclick="openGlazeLibraryModal()" style="font-size:0.74rem;margin-top:2px;margin-left:6px">⚙ 管理釉库</button>
+
+    <div class="nbmodal-row" style="margin-top:14px">
+      <span style="font-size:0.72rem;color:var(--ink3);align-self:center">泥料</span>
+      <input type="text" id="composite-clay-body" placeholder="选填">
+    </div>
+    <div class="nbmodal-row">
+      <span style="font-size:0.72rem;color:var(--ink3);align-self:center">烧成</span>
+      <input type="text" id="composite-firing" placeholder="如：1230℃氧化，选填">
+    </div>
+
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">结果笔记</div>
+    <textarea id="composite-note" placeholder="颜色效果、流动情况、观察结果…" oninput="autoGrowTextarea(this)" style="min-height:120px"></textarea>
+    <button class="btn-ghost" onclick="insertBlankLine('composite-note')" style="font-size:0.74rem;margin-top:4px;color:var(--ink3)">↵ 插入空行</button>
+
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">效果标签（可多选）</div>
+    <div id="composite-effect-tags"></div>
+
+    <div class="nbmodal-btns">
+      <button class="nbmodal-cancel" onclick="closeCompositeModal()">取消</button>
+      <button class="nbmodal-confirm" onclick="confirmCompositeSave()">存入配方本</button>
+    </div>
+  </div>
+</div>
+
+<!-- glaze library management modal (§B) -->
+<div class="nbmodal-overlay" id="glazelib-modal" onclick="closeGlazeLibraryModal(event)">
+  <div class="nbmodal">
+    <h3>釉库管理</h3>
+    <div id="glazelib-list"></div>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:14px">新增成品釉</div>
+    <input type="text" id="glazelib-new-name" placeholder="名称（必填）" maxlength="40">
+    <div class="nbmodal-row">
+      <span style="font-size:0.72rem;color:var(--ink3);align-self:center">品牌</span>
+      <input type="text" id="glazelib-new-brand" placeholder="选填">
+    </div>
+    <div class="nbmodal-row">
+      <span style="font-size:0.72rem;color:var(--ink3);align-self:center">货号</span>
+      <input type="text" id="glazelib-new-code" placeholder="选填">
+    </div>
+    <div class="nbmodal-row">
+      <span style="font-size:0.72rem;color:var(--ink3);align-self:center">色系</span>
+      <input type="text" id="glazelib-new-color" placeholder="选填">
+    </div>
+    <button class="nbmodal-confirm" style="margin-top:8px" onclick="glazeLibraryAdd()">＋ 添加</button>
+    <div class="nbmodal-btns">
+      <button class="nbmodal-cancel" style="flex:none;width:100%" onclick="closeGlazeLibraryModal()">关闭</button>
     </div>
   </div>
 </div>
@@ -1668,6 +1761,10 @@ let nbActiveEditNum = null;
 let materials = [];
 let firingCurves = [];
 
+// ── §B 复合釉试片：成品釉库 + 叠釉关系（独立 join 表，见 rowToCompositeLayer） ──
+let compositeGlazes = [];
+let compositeLayers = [];
+
 // ── 档案册（文件夹）：文件夹管归属，标签管主题——两个筛选维度各自独立、可同时生效 ──
 let folders = [];
 const NB_UNFILED = '__unfiled__'; // sentinel for "未分类" (folder_id is null), distinct from
@@ -1729,7 +1826,30 @@ function rowToNotebook(row) {
     sourceInfo: row.source_info || {},
     status: row.status || 'done',
     planNotes: row.plan_notes || '',
+    clayBody: row.clay_body || '',
+    firing: row.firing || '',
   };
+}
+function rowToCompositeGlaze(row) {
+  return {
+    id: row.id, name: row.name, brand: row.brand || '',
+    productCode: row.product_code || '', colorFamily: row.color_family || '',
+    notes: row.notes || '',
+  };
+}
+function rowToCompositeLayer(row) {
+  return { id: row.id, entryId: row.entry_id, glazeId: row.glaze_id, layerOrder: row.layer_order, application: row.application || '' };
+}
+// 某试片记录当前的叠釉图层（底→面），已按 layer_order 排好序
+function layersForEntry(entryId) {
+  return compositeLayers.filter(l => l.entryId === entryId).sort((a,b) => a.layerOrder - b.layerOrder);
+}
+// name 为空时的兜底显示名：从图层栈实时生成（底 › 面），永不写回数据库、永不覆盖用户手动填的 name
+function compositeDisplayName(rec) {
+  if(rec.name) return rec.name;
+  const layers = layersForEntry(rec.id);
+  if(!layers.length) return '（未命名复合釉）';
+  return layers.map(l => { const g = compositeGlazes.find(x=>x.id===l.glazeId); return g ? g.name : '？'; }).join(' › ');
 }
 function rowToFolder(row) {
   return { id: row.id, name: row.name, note: row.note||'', sortOrder: row.sort_order||0 };
@@ -1759,12 +1879,14 @@ function rowToFiringCurve(row) {
 
 // ── boot: fetch everything for the signed-in user, then render ──
 async function boot() {
-  const [nbRes, histRes, matRes, fcRes, folderRes] = await Promise.all([
+  const [nbRes, histRes, matRes, fcRes, folderRes, cgRes, clRes] = await Promise.all([
     sb.from('notebook_entries').select('*').order('created_at', {ascending:false}),
     sb.from('history_entries').select('*').order('created_at', {ascending:false}).limit(50),
     sb.from('materials').select('*').order('name'),
     sb.from('firing_curves').select('*').order('name'),
     sb.from('folders').select('*').order('sort_order'),
+    sb.from('composite_glazes').select('*').order('name'),
+    sb.from('composite_layers').select('*').order('layer_order'),
   ]);
   notebook = (nbRes.data||[]).map(rowToNotebook);
   history = (histRes.data||[]).map(rowToHistory);
@@ -1774,6 +1896,9 @@ async function boot() {
   // folders migration SQL in Supabase — the app must keep working with an empty folder
   // list ("全部"/"未分类" only) rather than throwing before that migration lands.
   folders = (folderRes.data||[]).map(rowToFolder);
+  // 同样：§B 迁移跑之前 cgRes/clRes 会报错，静默忽略，复合釉相关 UI 保持空列表可用。
+  compositeGlazes = (cgRes.data||[]).map(rowToCompositeGlaze);
+  compositeLayers = (clRes.data||[]).map(rowToCompositeLayer);
 
   // First login for this account: give them a starting materials library (typical
   // textbook values, all flagged source:'typical'/verified:false) instead of an empty
@@ -2752,7 +2877,7 @@ function statRange(nums) {
 }
 function calibReliableGroup(curveId) {
   return notebook
-    .filter(r => r.firingCurveId === curveId && r.dataConfidence === '可靠' && r.entryType !== 'collected')
+    .filter(r => r.firingCurveId === curveId && r.dataConfidence === '可靠' && r.entryType !== 'collected' && r.entryType !== 'composite_test')
     .map(rec => ({ rec, seger: computeSegerFormula(rec.baseIngredients, rec.additives) }))
     .filter(x => x.seger.ok);
 }
@@ -2873,6 +2998,7 @@ function switchTab(name, btn) {
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='fav') renderFavTab();
   if(name==='planned') renderPlannedTab();
+  if(name==='composite') renderCompositeTab();
   if(name==='hist') renderHistory();
   if(name==='nb') renderNotebook();
   if(name==='mat') renderMaterials();
@@ -3152,6 +3278,7 @@ function closeNbTypeChooser(e) {
 function chooseNbEntryType(type) {
   closeNbTypeChooser();
   if(type === 'collected') openCollectedModal();
+  else if(type === 'composite_test') openCompositeModal();
   else openNbModal(null, null);
 }
 
@@ -3230,6 +3357,191 @@ async function confirmCollectedSave() {
   updateNbBadge();
   document.getElementById('collected-modal').classList.remove('open');
   renderNbAndFav();
+}
+
+// ── §B 复合釉试片 (composite glaze test tiles): entry_type='composite_test' ──
+// 隔离逻辑同 collected：不进衍生树/不参与反向校准/不计入 Seger 数据集统计
+// (见 calibReliableGroup 的 entryType 过滤、nbCardHtml 里跳过 renderGlazeTree/renderChemPanel)。
+// 叠釉关系存在独立的 composite_layers join 表里，不是 notebook_entries 的字段。
+let compositeModalLayers = [];
+let compositeModalEditId = null;
+
+function compositeEffectTagCheckboxesHtml(selected) {
+  selected = selected || [];
+  return EFFECT_TAG_OPTIONS.map(t=>
+    `<label style="font-size:0.72rem;margin-right:10px;display:inline-block;margin-bottom:4px"><input type="checkbox" class="composite-effect-tag" value="${t}" ${selected.includes(t)?'checked':''}> ${t}</label>`
+  ).join('');
+}
+function readCompositeEffectTagCheckboxes() {
+  return [...document.querySelectorAll('.composite-effect-tag:checked')].map(el=>el.value);
+}
+
+function openCompositeModal() {
+  compositeModalEditId = null;
+  document.getElementById('composite-modal-title').textContent = '登记复合釉试片';
+  document.getElementById('composite-num').value = '';
+  document.getElementById('composite-name').value = '';
+  document.getElementById('composite-clay-body').value = '';
+  document.getElementById('composite-firing').value = '';
+  document.getElementById('composite-note').value = '';
+  autoGrowTextarea(document.getElementById('composite-note'));
+  compositeModalLayers = [{glazeId:'', application:''}, {glazeId:'', application:''}];
+  renderCompositeLayers();
+  document.getElementById('composite-effect-tags').innerHTML = compositeEffectTagCheckboxesHtml([]);
+  document.getElementById('composite-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('composite-name').focus(), 50);
+}
+function closeCompositeModal(e) {
+  if(!e || e.target===document.getElementById('composite-modal')) {
+    document.getElementById('composite-modal').classList.remove('open');
+  }
+}
+function compositeGlazeOptionsHtml(selectedId) {
+  if(compositeGlazes.length === 0) return '<option value="">（釉库是空的，先去管理釉库添加）</option>';
+  return '<option value="">请选择…</option>' +
+    compositeGlazes.map(g=>`<option value="${g.id}" ${g.id===selectedId?'selected':''}>${g.name}${g.brand?' · '+g.brand:''}</option>`).join('');
+}
+function renderCompositeLayers() {
+  const w = document.getElementById('composite-layers-wrap');
+  w.innerHTML = compositeModalLayers.map((l,i) => `
+    <div class="nb-layer-edit-row">
+      <span class="nb-layer-order-num">${i===0?'底':i+1}</span>
+      <select onchange="compositeModalLayers[${i}].glazeId=this.value">${compositeGlazeOptionsHtml(l.glazeId)}</select>
+      <input type="text" value="${(l.application||'').replace(/"/g,'&quot;')}" placeholder="施釉方式" oninput="compositeModalLayers[${i}].application=this.value">
+      <button class="btn-icon" ${i===0?'disabled style="opacity:0.3"':''} onclick="compositeMoveLayer(${i},-1)" title="上移">↑</button>
+      <button class="btn-icon" ${i===compositeModalLayers.length-1?'disabled style="opacity:0.3"':''} onclick="compositeMoveLayer(${i},1)" title="下移">↓</button>
+      <button class="btn-icon" onclick="compositeModalLayers.splice(${i},1);renderCompositeLayers()" title="删除">×</button>
+    </div>
+  `).join('');
+}
+function compositeAddLayer() { compositeModalLayers.push({glazeId:'', application:''}); renderCompositeLayers(); }
+function compositeMoveLayer(i, dir) {
+  const j = i + dir;
+  if(j < 0 || j >= compositeModalLayers.length) return;
+  [compositeModalLayers[i], compositeModalLayers[j]] = [compositeModalLayers[j], compositeModalLayers[i]];
+  renderCompositeLayers();
+}
+
+async function confirmCompositeSave() {
+  const num = document.getElementById('composite-num').value.trim();
+  const name = document.getElementById('composite-name').value.trim();
+  const clayBody = document.getElementById('composite-clay-body').value.trim();
+  const firing = document.getElementById('composite-firing').value.trim();
+  const note = document.getElementById('composite-note').value.trim();
+  const effectTags = readCompositeEffectTagCheckboxes();
+  const validLayers = compositeModalLayers.filter(l => l.glazeId);
+  if(validLayers.length === 0) { alert('至少选一层釉'); return; }
+
+  let entryId = compositeModalEditId;
+  if(entryId) {
+    const payload = { num, name, note, clay_body: clayBody, firing, effect_tags: effectTags };
+    const { data, error } = await sb.from('notebook_entries').update(payload).eq('id', entryId).select().single();
+    if(error) { alert('保存失败：'+error.message); return; }
+    const ni = notebook.findIndex(r=>r.id===entryId);
+    if(ni !== -1) notebook[ni] = rowToNotebook(data);
+  } else {
+    const payload = {
+      num, name, note, clay_body: clayBody, firing, effect_tags: effectTags,
+      base_ingredients: [], base_dry: 0, base_water: 0, glazes: [], additives: {},
+      entry_type: 'composite_test', status: 'done',
+      folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
+    };
+    const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
+    if(error) { alert('保存失败：'+error.message); return; }
+    notebook.unshift(rowToNotebook(data));
+    entryId = data.id;
+  }
+
+  // 图层整体替换：先删旧的再插入新的，比逐条 diff 简单可靠，层数很少，量级不是问题
+  await sb.from('composite_layers').delete().eq('entry_id', entryId);
+  compositeLayers = compositeLayers.filter(l => l.entryId !== entryId);
+  const layerRows = validLayers.map((l,i) => ({ entry_id: entryId, glaze_id: l.glazeId, layer_order: i+1, application: (l.application||'').trim() || null }));
+  const { data: newLayers, error: layerErr } = await sb.from('composite_layers').insert(layerRows).select();
+  if(layerErr) { alert('图层保存失败：'+layerErr.message); }
+  else compositeLayers.push(...(newLayers||[]).map(rowToCompositeLayer));
+
+  updateNbBadge();
+  document.getElementById('composite-modal').classList.remove('open');
+  renderNbAndFav();
+}
+
+function openCompositeModalEdit(ni) {
+  const rec = notebook[ni];
+  compositeModalEditId = rec.id;
+  document.getElementById('composite-modal-title').textContent = '编辑复合釉试片';
+  document.getElementById('composite-num').value = rec.num || '';
+  document.getElementById('composite-name').value = rec.name || '';
+  document.getElementById('composite-clay-body').value = rec.clayBody || '';
+  document.getElementById('composite-firing').value = rec.firing || '';
+  document.getElementById('composite-note').value = rec.note || '';
+  autoGrowTextarea(document.getElementById('composite-note'));
+  const existing = layersForEntry(rec.id);
+  compositeModalLayers = existing.length ? existing.map(l => ({glazeId: l.glazeId, application: l.application})) : [{glazeId:'', application:''}];
+  renderCompositeLayers();
+  document.getElementById('composite-effect-tags').innerHTML = compositeEffectTagCheckboxesHtml(rec.effectTags);
+  document.getElementById('composite-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('composite-name').focus(), 50);
+}
+
+// ── §B 釉库管理 (composite_glazes CRUD) ──
+function openGlazeLibraryModal() {
+  renderGlazeLibraryList();
+  ['glazelib-new-name','glazelib-new-brand','glazelib-new-code','glazelib-new-color'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('glazelib-modal').classList.add('open');
+}
+function closeGlazeLibraryModal(e) {
+  if(!e || e.target===document.getElementById('glazelib-modal')) {
+    document.getElementById('glazelib-modal').classList.remove('open');
+    renderCompositeLayers(); // refresh the layer-editor <select> options behind it (name/brand may have changed)
+  }
+}
+function renderGlazeLibraryList() {
+  const w = document.getElementById('glazelib-list');
+  if(compositeGlazes.length === 0) {
+    w.innerHTML = `<div class="import-hint">釉库还是空的，在下面添加成品釉。</div>`;
+    return;
+  }
+  w.innerHTML = compositeGlazes.map(g => `
+    <div class="glazelib-row">
+      <span>${g.name}${g.brand?` <span style="color:var(--ink3)">· ${g.brand}</span>`:''}${g.colorFamily?` <span style="color:var(--ink3)">· ${g.colorFamily}</span>`:''}</span>
+      <span style="color:var(--ink3);font-family:var(--font-mono)">${g.productCode||''}</span>
+      <button class="btn-icon" onclick="glazeLibraryDelete('${g.id}')" title="删除">×</button>
+    </div>
+  `).join('');
+}
+async function glazeLibraryAdd() {
+  const name = document.getElementById('glazelib-new-name').value.trim();
+  if(!name) { alert('名称必填'); return; }
+  const payload = {
+    name,
+    brand: document.getElementById('glazelib-new-brand').value.trim() || null,
+    product_code: document.getElementById('glazelib-new-code').value.trim() || null,
+    color_family: document.getElementById('glazelib-new-color').value.trim() || null,
+  };
+  const { data, error } = await sb.from('composite_glazes').insert(payload).select().single();
+  if(error) { alert('添加失败：'+error.message); return; }
+  compositeGlazes.push(rowToCompositeGlaze(data));
+  ['glazelib-new-name','glazelib-new-brand','glazelib-new-code','glazelib-new-color'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  renderGlazeLibraryList();
+  renderCompositeLayers();
+}
+// on delete restrict: 被复合釉试片引用的库存釉不能删，数据库层面拒绝，这里友好提示引用数量
+async function glazeLibraryDelete(id) {
+  const usedBy = compositeLayers.filter(l => l.glazeId === id).length;
+  if(usedBy > 0) { alert(`该釉正在被 ${usedBy} 张试片使用，无法删除`); return; }
+  const { error } = await sb.from('composite_glazes').delete().eq('id', id);
+  if(error) {
+    if(error.code === '23503') alert('该釉正在被试片使用，无法删除');
+    else alert('删除失败：'+error.message);
+    return;
+  }
+  compositeGlazes = compositeGlazes.filter(g => g.id !== id);
+  renderGlazeLibraryList();
+  renderCompositeLayers();
 }
 
 // Notebook cards only ever showed the flat baseIngredients/additives of a record —
@@ -3718,6 +4030,7 @@ function closeNbTagPanel(e) {
 // would collide and break the name/note inline editors and photo-upload buttons.
 function nbCardHtml(rec, ni, idPrefix) {
   const isCollected = rec.entryType === 'collected';
+  const isComposite = rec.entryType === 'composite_test';
   const si = rec.sourceInfo || {};
   const baseTags = (rec.baseIngredients||[]).map(i=>
     `<span class="nb-ingredient-tag">${i.name} ${i.parts}</span>`
@@ -3725,6 +4038,20 @@ function nbCardHtml(rec, ni, idPrefix) {
   const addTags = Object.entries(rec.additives||{}).map(([name,pct])=>
     `<span class="nb-additive-tag">${name} +${(+pct).toFixed(3)}%</span>`
   ).join('');
+  // §B 复合釉试片：显示名未手动填写时，从图层栈（底→面）实时生成，不写库
+  const displayName = isComposite ? compositeDisplayName(rec) : rec.name;
+  const compositeLayersHtml = isComposite ? (() => {
+    const layers = layersForEntry(rec.id);
+    if(!layers.length) return '';
+    return `<div class="nb-layer-stack">${layers.map((l,i)=>{
+      const g = compositeGlazes.find(cg=>cg.id===l.glazeId);
+      return `${i>0?'<span class="nb-layer-arrow">›</span>':''}<span class="nb-layer-chip">${g?g.name:'？'}${l.application?` <span style="opacity:0.6">(${l.application})</span>`:''}</span>`;
+    }).join('')}</div>`;
+  })() : '';
+  const compositeMetaHtml = isComposite ? [
+    rec.clayBody ? `<span class="nb-ingredient-tag">泥料：${rec.clayBody}</span>` : '',
+    rec.firing ? `<span class="nb-ingredient-tag">烧成：${rec.firing}</span>` : '',
+  ].filter(Boolean).join('') : '';
   const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
   const metaBadges = [
     fc ? `<span class="nb-ingredient-tag">窑：${fc.name}</span>` : '',
@@ -3746,15 +4073,16 @@ function nbCardHtml(rec, ni, idPrefix) {
   const showBatchUi = idPrefix === 'nb' && nbBatchMode;
 
   return `
-    <div class="nb-card ${isCollected ? 'nb-card-collected' : ''} ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
+    <div class="nb-card ${isCollected ? 'nb-card-collected' : ''} ${isComposite ? 'nb-card-composite' : ''} ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
       <div class="nb-card-head">
         <div class="nb-head-row1">
           ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
           <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
           ${isCollected ? `<span class="nb-collected-badge" title="采集试片">采</span>` : ''}
+          ${isComposite ? `<span class="nb-composite-badge" title="复合釉试片">叠</span>` : ''}
           ${rec.status==='planned' ? `<span class="nb-planned-badge" title="待试：还没烧">待</span>` : ''}
           ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
-          <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
+          <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${displayName}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
           <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
             <input type="text" id="${idPrefix}name-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
             <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
@@ -3767,9 +4095,9 @@ function nbCardHtml(rec, ni, idPrefix) {
         </div>
         <div class="nb-actions" id="${idPrefix}-actions-${ni}">
           ${rec.status==='planned' ? `<button class="nb-load-btn" onclick="markNbDone(${ni})">标记为已烧</button>` : ''}
-          <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
+          <button class="nb-load-btn" onclick="${isComposite ? `openCompositeModalEdit(${ni})` : `openNbModalEdit(${ni})`}">编辑</button>
           <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
-          <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
+          ${!isComposite ? `<button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>` : ''}
           <button class="nb-load-btn" onclick="openFolderPicker('single', ['${rec.id}'])">移动到…</button>
           <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
         </div>
@@ -3777,11 +4105,13 @@ function nbCardHtml(rec, ni, idPrefix) {
       <div class="nb-body">
         ${collectedSourceHtml}
         ${rec.status==='planned' && rec.planNotes ? `<div class="nb-collected-source"><div class="nb-section-label">试验计划</div><div class="nb-collected-notes-raw" style="white-space:pre-wrap">${rec.planNotes}</div></div>` : ''}
-        ${(!isCollected || baseTags) ? `<div class="nb-section-label">基础原料</div><div class="nb-row">${baseTags}</div>` : ''}
+        ${isComposite ? `<div class="nb-section-label">叠釉</div>${compositeLayersHtml}` : ''}
+        ${compositeMetaHtml ? `<div class="nb-row" style="margin-top:4px">${compositeMetaHtml}</div>` : ''}
+        ${(!isCollected && !isComposite || baseTags) ? `<div class="nb-section-label">基础原料</div><div class="nb-row">${baseTags}</div>` : ''}
         ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
         ${metaBadges ? `<div class="nb-row" style="margin-top:4px">${metaBadges}</div>` : ''}
-        ${renderChemPanel(rec.baseIngredients, rec.additives, isCollected)}
-        ${!isCollected ? renderGlazeTree(rec) : ''}
+        ${renderChemPanel(rec.baseIngredients, rec.additives, isCollected || isComposite)}
+        ${!isCollected && !isComposite ? renderGlazeTree(rec) : ''}
         <div id="${idPrefix}note-display-${ni}" onclick="editNbNote(${ni},'${idPrefix}')" style="cursor:pointer">
           ${rec.note
             ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>`
@@ -3833,6 +4163,22 @@ function renderPlannedTab() {
   wrap.innerHTML = notebook.map((rec,ni) => (rec.entryType==='experiment' && rec.status==='planned') ? nbCardHtml(rec, ni, 'planned') : '').join('');
 }
 
+// ── §B 复合釉 tab: entry_type='composite_test' 的筛选视图（记录本身仍同时出现在配方本主列表）──
+function renderCompositeTab() {
+  const composite = notebook.filter(r=>r.entryType==='composite_test');
+  const badge = document.getElementById('composite-count-badge');
+  if(badge) badge.textContent = composite.length > 0 ? `(${composite.length})` : '';
+  const countEl = document.getElementById('composite-toolbar-count');
+  if(countEl) countEl.textContent = composite.length > 0 ? `共 ${composite.length} 条复合釉试片` : '';
+  const wrap = document.getElementById('composite-list');
+  if(!wrap) return;
+  if(composite.length === 0) {
+    wrap.innerHTML = `<div class="fav-empty"><div class="big">叠</div>还没有复合釉试片。点上面「＋ 新建复合釉试片」开始记录。</div>`;
+    return;
+  }
+  wrap.innerHTML = notebook.map((rec,ni) => rec.entryType==='composite_test' ? nbCardHtml(rec, ni, 'composite') : '').join('');
+}
+
 // Mutation sites whose effect could be visible in both tabs at once (they're both
 // permanently in the DOM — switchTab only toggles .active) must refresh both, or the
 // tab you're not looking at goes stale until its next full render.
@@ -3840,6 +4186,7 @@ function renderNbAndFav() {
   renderNotebook();
   renderFavTab();
   renderPlannedTab();
+  renderCompositeTab();
 }
 
 async function toggleNbStar(ni) {
