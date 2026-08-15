@@ -1288,6 +1288,9 @@
   <div class="fav-panel">
     <div class="fav-toolbar">
       <span class="import-hint" id="planned-toolbar-count"></span>
+      <div class="fav-toolbar-right">
+        <button class="nb-new-btn" onclick="openNbModalPlanned()">＋ 新建待试</button>
+      </div>
     </div>
     <div id="planned-list"></div>
   </div>
@@ -1413,6 +1416,7 @@
     <input type="text" id="nb-modal-name" placeholder="如：大结晶基釉、冰蓝结晶" maxlength="40">
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">基础原料（份数）</div>
     <div id="nb-modal-base-wrap" style="margin-bottom:4px"></div>
+    <button class="btn-ghost" id="nb-modal-base-addbtn" onclick="nbModalAddBase()" style="font-size:0.74rem;margin-top:2px">＋ 原料</button>
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">添加剂（外加%，相对基础干料）</div>
     <div id="nb-modal-add-wrap"></div>
     <button class="btn-ghost" onclick="nbModalAddAdditive()" style="font-size:0.74rem;margin-top:4px">＋ 添加剂</button>
@@ -1640,6 +1644,9 @@ let glazes = (() => {
 let history = [];
 let notebook = [];
 let nbModalAdditives = [];
+// 手动新建时可编辑的基础原料；null = 本次改用只读展示（存入配方本/存入配方本(基础釉)
+// 场景下，基础原料就是计算器 tab 当前算出的那份，不该在弹窗里另外改）。
+let nbModalBase = [];
 let pendingSaveIndex = null;
 let lastGlazeStates = [];
 // Set by loadNbToCalc() to the exact chain it just loaded (label + JSON snapshot).
@@ -2926,11 +2933,23 @@ function openNbModal(glazeIndex, glazeState) {
   document.getElementById('nb-modal-confidence').value = '可靠';
   document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml([]);
 
-  // base ingredients display (read-only labels)
+  // base ingredients: from an actual calculated glaze step, the base composition is
+  // whatever was just calculated — show read-only. 手动新建 has no calculation to stay
+  // consistent with, so let the user type materials directly into this modal instead
+  // of silently inheriting whatever happens to be sitting in the 计算器 tab.
   const baseWrap = document.getElementById('nb-modal-base-wrap');
-  baseWrap.innerHTML = baseIngredients.map(i =>
-    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
-  ).join('');
+  const baseAddBtn = document.getElementById('nb-modal-base-addbtn');
+  if(glazeIndex !== null) {
+    nbModalBase = null;
+    baseWrap.innerHTML = baseIngredients.map(i =>
+      `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+    ).join('');
+    baseAddBtn.style.display = 'none';
+  } else {
+    nbModalBase = [];
+    renderNbModalBase();
+    baseAddBtn.style.display = '';
+  }
 
   // additives from glaze state
   nbModalAdditives = [];
@@ -2962,7 +2981,9 @@ function openNbModalEdit(ni) {
   document.getElementById('nb-modal-confidence').value = rec.dataConfidence || '可靠';
   document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml(rec.effectTags);
 
+  nbModalBase = null;
   const baseWrap = document.getElementById('nb-modal-base-wrap');
+  document.getElementById('nb-modal-base-addbtn').style.display = 'none';
   baseWrap.innerHTML = (rec.baseIngredients||[]).map(i =>
     `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
   ).join('');
@@ -2992,9 +3013,28 @@ function nbModalAddAdditive() {
   renderNbModalAdditives();
 }
 
+function renderNbModalBase() {
+  const w = document.getElementById('nb-modal-base-wrap');
+  w.innerHTML = nbModalBase.map((ing,i) => `
+    <div class="nb-additive-edit-row">
+      <input type="text" value="${ing.name}" placeholder="原料名称" oninput="nbModalBase[${i}].name=this.value">
+      <input type="number" value="${ing.parts}" min="0" step="0.1" placeholder="份数" oninput="nbModalBase[${i}].parts=parseFloat(this.value)||0">
+      <button class="btn-icon" onclick="nbModalBase.splice(${i},1);renderNbModalBase()" title="删除">×</button>
+    </div>
+  `).join('');
+}
+function nbModalAddBase() { nbModalBase.push({name:'', parts:0}); renderNbModalBase(); }
+
 function toggleNbPlanNotesField() {
   document.getElementById('nb-modal-plannotes-wrap').style.display =
     document.getElementById('nb-modal-planned').checked ? '' : 'none';
+}
+
+// 待试 tab 的「＋ 新建待试」：就是手动新建配方，只是提前替用户勾好"待试"。
+function openNbModalPlanned() {
+  openNbModal(null, null);
+  document.getElementById('nb-modal-planned').checked = true;
+  toggleNbPlanNotesField();
 }
 
 function closeNbModal(e) {
@@ -3049,9 +3089,14 @@ async function confirmNbSave() {
       );
       if(!proceed) return;
     }
+    // nbModalBase !== null means this save came from 手动新建/"存入配方本(基础釉)"
+    // with the modal's own editable material rows — use those, not whatever the
+    // 计算器 tab's baseIngredients currently happens to hold.
     const payload = {
       num, name, note,
-      base_ingredients: baseIngredients.map(i=>({...i})),
+      base_ingredients: nbModalBase !== null
+        ? nbModalBase.filter(i=>i.name.trim()).map(i=>({...i}))
+        : baseIngredients.map(i=>({...i})),
       base_dry: parseFloat(document.getElementById('base-dry').value)||0,
       base_water: parseFloat(document.getElementById('base-water').value)||0,
       glazes: savingFromGlazeStep ? glazes.map(g=>({
@@ -3782,7 +3827,7 @@ function renderPlannedTab() {
   const wrap = document.getElementById('planned-list');
   if(!wrap) return;
   if(planned.length === 0) {
-    wrap.innerHTML = `<div class="fav-empty"><div class="big">待</div>还没有待试的配方。手动新建「我的实验」时勾选"待试"，先记录配方和计划，之后再补烧成结果。</div>`;
+    wrap.innerHTML = `<div class="fav-empty"><div class="big">待</div>还没有待试的配方。点上面「＋ 新建待试」，先记录配方和计划，之后再补烧成结果。</div>`;
     return;
   }
   wrap.innerHTML = notebook.map((rec,ni) => (rec.entryType==='experiment' && rec.status==='planned') ? nbCardHtml(rec, ni, 'planned') : '').join('');
@@ -4537,7 +4582,9 @@ function openBaseNbModal() {
   document.getElementById('nb-modal-plan-notes').value = '';
   toggleNbPlanNotesField();
 
+  nbModalBase = null;
   const baseWrap = document.getElementById('nb-modal-base-wrap');
+  document.getElementById('nb-modal-base-addbtn').style.display = 'none';
   baseWrap.innerHTML = baseIngredients.map(i =>
     `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
   ).join('');
