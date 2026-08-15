@@ -213,3 +213,9 @@ alter table public.notebook_entries add column if not exists share_signature jso
 -- ── 采集试片来源信息（§2）：{studio, location, date, teacher, firing_temp, notes_raw} ──
 -- notes_raw 是现场原话的逐字记录（"老师说这个要烧两次"之类），不强行拆成结构化字段。
 alter table public.notebook_entries add column if not exists source_info jsonb not null default '{}'::jsonb;
+
+-- ── 待试配方（§A）：与 entry_type 正交。本期 'planned' 只用于 entry_type='experiment'；
+-- collected/composite_test 记录恒为 'done'。 ──
+alter table public.notebook_entries add column if not exists status text not null default 'done'; -- 'done' | 'planned'
+-- 试验计划文本（泥料/梯度/厚度/注意事项等），与烧成后的结果笔记（note）分开，避免互相覆盖。
+alter table public.notebook_entries add column if not exists plan_notes text;

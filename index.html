@@ -529,6 +529,12 @@
     color: var(--ink3); border: 1px dashed var(--line); border-radius: 3px;
     padding: 1px 5px; flex-shrink: 0;
   }
+  /* §A 待试配方: 还没烧的实验记录，卡片上加个"待"角标提示 */
+  .nb-planned-badge {
+    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 3px;
+    padding: 1px 5px; flex-shrink: 0;
+  }
   .nb-collected-source {
     margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--nb-line);
   }
@@ -1181,6 +1187,7 @@
   <button class="tab-btn active" onclick="switchTab('calc',this)">配方计算</button>
   <button class="tab-btn tab-hist" onclick="switchTab('hist',this)">历史记录 <span id="hist-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-nb" onclick="switchTab('nb',this)">配方本 <span id="nb-count-badge" class="fav-count"></span></button>
+  <button class="tab-btn tab-planned" onclick="switchTab('planned',this)">待试 <span id="planned-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-fav" onclick="switchTab('fav',this)">收藏 <span id="fav-count-badge" class="fav-count"></span></button>
   <button class="tab-btn tab-mat" onclick="switchTab('mat',this)">原料库</button>
   <button class="tab-btn tab-fc" onclick="switchTab('fc',this)">烧成曲线</button>
@@ -1273,6 +1280,16 @@
     <div id="nb-tagfilter-container"></div>
     <div id="nb-folderbar-container"></div>
     <div id="nb-list"></div>
+  </div>
+</div>
+
+<!-- §A 待试配方 tab: entry_type='experiment' && status='planned' -->
+<div class="tab-panel" id="tab-planned">
+  <div class="fav-panel">
+    <div class="fav-toolbar">
+      <span class="import-hint" id="planned-toolbar-count"></span>
+    </div>
+    <div id="planned-list"></div>
   </div>
 </div>
 
@@ -1399,6 +1416,12 @@
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">添加剂（外加%，相对基础干料）</div>
     <div id="nb-modal-add-wrap"></div>
     <button class="btn-ghost" onclick="nbModalAddAdditive()" style="font-size:0.74rem;margin-top:4px">＋ 添加剂</button>
+    <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">状态</div>
+    <label style="font-size:0.78rem;display:flex;align-items:center;gap:6px"><input type="checkbox" id="nb-modal-planned" onchange="toggleNbPlanNotesField()"> 待试（还没烧，先记录配方和计划）</label>
+    <div id="nb-modal-plannotes-wrap" style="display:none;margin-top:8px">
+      <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">试验计划（泥料/梯度/厚度/注意事项，选填）</div>
+      <textarea id="nb-modal-plan-notes" placeholder="如：泥料用瓷泥；分3个厚度梯度试；注意还原气氛…" oninput="autoGrowTextarea(this)" style="min-height:100px"></textarea>
+    </div>
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:10px">备注</div>
     <textarea id="nb-modal-note" placeholder="颜色效果、烧成温度、观察结果…" oninput="autoGrowTextarea(this)" style="min-height:150px"></textarea>
     <button class="btn-ghost" onclick="insertBlankLine('nb-modal-note')" style="font-size:0.74rem;margin-top:4px;color:var(--ink3)">↵ 插入空行</button>
@@ -1697,6 +1720,8 @@ function rowToNotebook(row) {
     folderId: row.folder_id || null,
     entryType: row.entry_type || 'experiment',
     sourceInfo: row.source_info || {},
+    status: row.status || 'done',
+    planNotes: row.plan_notes || '',
   };
 }
 function rowToFolder(row) {
@@ -2840,6 +2865,7 @@ function switchTab(name, btn) {
   btn.classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='fav') renderFavTab();
+  if(name==='planned') renderPlannedTab();
   if(name==='hist') renderHistory();
   if(name==='nb') renderNotebook();
   if(name==='mat') renderMaterials();
@@ -2893,6 +2919,9 @@ function openNbModal(glazeIndex, glazeState) {
   document.getElementById('nb-modal-name').value = glazeIndex !== null ? glazes[glazeIndex].name : '';
   document.getElementById('nb-modal-note').value = '';
   autoGrowTextarea(document.getElementById('nb-modal-note'));
+  document.getElementById('nb-modal-planned').checked = false;
+  document.getElementById('nb-modal-plan-notes').value = '';
+  toggleNbPlanNotesField();
   document.getElementById('nb-modal-firing-curve').innerHTML = firingCurveOptionsHtml(null);
   document.getElementById('nb-modal-confidence').value = '可靠';
   document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml([]);
@@ -2926,6 +2955,9 @@ function openNbModalEdit(ni) {
   document.getElementById('nb-modal-name').value = rec.name || '';
   document.getElementById('nb-modal-note').value = rec.note || '';
   autoGrowTextarea(document.getElementById('nb-modal-note'));
+  document.getElementById('nb-modal-planned').checked = rec.status === 'planned';
+  document.getElementById('nb-modal-plan-notes').value = rec.planNotes || '';
+  toggleNbPlanNotesField();
   document.getElementById('nb-modal-firing-curve').innerHTML = firingCurveOptionsHtml(rec.firingCurveId);
   document.getElementById('nb-modal-confidence').value = rec.dataConfidence || '可靠';
   document.getElementById('nb-modal-effect-tags').innerHTML = effectTagCheckboxesHtml(rec.effectTags);
@@ -2960,6 +2992,11 @@ function nbModalAddAdditive() {
   renderNbModalAdditives();
 }
 
+function toggleNbPlanNotesField() {
+  document.getElementById('nb-modal-plannotes-wrap').style.display =
+    document.getElementById('nb-modal-planned').checked ? '' : 'none';
+}
+
 function closeNbModal(e) {
   if(!e || e.target===document.getElementById('nb-modal')) {
     document.getElementById('nb-modal').classList.remove('open');
@@ -2979,13 +3016,15 @@ async function confirmNbSave() {
   const firingCurveId = document.getElementById('nb-modal-firing-curve').value || null;
   const dataConfidence = document.getElementById('nb-modal-confidence').value;
   const effectTags = readEffectTagCheckboxes();
+  const status = document.getElementById('nb-modal-planned').checked ? 'planned' : 'done';
+  const planNotes = document.getElementById('nb-modal-plan-notes').value.trim();
 
   if(editIdx !== '') {
     // edit mode: this modal only shows base ingredients/glazes read-only (from the
     // record itself), it never lets you change them — so don't touch those fields.
     // Writing the global calculator state here would silently overwrite the record's
     // base recipe with whatever unrelated recipe happens to be loaded in the Calc tab.
-    const payload = { num, name, note, additives, firing_curve_id: firingCurveId, data_confidence: dataConfidence, effect_tags: effectTags };
+    const payload = { num, name, note, additives, firing_curve_id: firingCurveId, data_confidence: dataConfidence, effect_tags: effectTags, status, plan_notes: planNotes };
     const existing = notebook[parseInt(editIdx)];
     const { data, error } = await sb.from('notebook_entries').update(payload).eq('id', existing.id).select().single();
     if(error) { alert('保存失败：'+error.message); return; }
@@ -3031,6 +3070,7 @@ async function confirmNbSave() {
       })) : [],
       additives,
       firing_curve_id: firingCurveId, data_confidence: dataConfidence, effect_tags: effectTags,
+      status, plan_notes: planNotes,
       // 新建记录默认落在当前正在查看的文件夹；查看「全部」或「未分类」时落在未分类
       folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
     };
@@ -3667,6 +3707,7 @@ function nbCardHtml(rec, ni, idPrefix) {
           ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
           <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
           ${isCollected ? `<span class="nb-collected-badge" title="采集试片">采</span>` : ''}
+          ${rec.status==='planned' ? `<span class="nb-planned-badge" title="待试：还没烧">待</span>` : ''}
           ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
           <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${rec.name}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
           <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
@@ -3680,6 +3721,7 @@ function nbCardHtml(rec, ni, idPrefix) {
           <div class="nb-date">${rec.savedAt}</div>
         </div>
         <div class="nb-actions" id="${idPrefix}-actions-${ni}">
+          ${rec.status==='planned' ? `<button class="nb-load-btn" onclick="markNbDone(${ni})">标记为已烧</button>` : ''}
           <button class="nb-load-btn" onclick="openNbModalEdit(${ni})">编辑</button>
           <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
           <button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>
@@ -3689,6 +3731,7 @@ function nbCardHtml(rec, ni, idPrefix) {
       </div>
       <div class="nb-body">
         ${collectedSourceHtml}
+        ${rec.status==='planned' && rec.planNotes ? `<div class="nb-collected-source"><div class="nb-section-label">试验计划</div><div class="nb-collected-notes-raw" style="white-space:pre-wrap">${rec.planNotes}</div></div>` : ''}
         ${(!isCollected || baseTags) ? `<div class="nb-section-label">基础原料</div><div class="nb-row">${baseTags}</div>` : ''}
         ${addTags ? `<div class="nb-section-label">添加剂</div><div class="nb-row">${addTags}</div>` : ''}
         ${metaBadges ? `<div class="nb-row" style="margin-top:4px">${metaBadges}</div>` : ''}
@@ -3729,18 +3772,43 @@ function renderFavTab() {
   wrap.innerHTML = notebook.map((rec,ni) => rec.starred ? nbCardHtml(rec, ni, 'fav') : '').join('');
 }
 
+// ── 待试 tab: status='planned' 的自己实验记录（collected/composite_test 恒为 done，不会出现在这里）──
+function renderPlannedTab() {
+  const planned = notebook.filter(r=>r.entryType==='experiment' && r.status==='planned');
+  const badge = document.getElementById('planned-count-badge');
+  if(badge) badge.textContent = planned.length > 0 ? `(${planned.length})` : '';
+  const countEl = document.getElementById('planned-toolbar-count');
+  if(countEl) countEl.textContent = planned.length > 0 ? `共 ${planned.length} 条待试` : '';
+  const wrap = document.getElementById('planned-list');
+  if(!wrap) return;
+  if(planned.length === 0) {
+    wrap.innerHTML = `<div class="fav-empty"><div class="big">待</div>还没有待试的配方。手动新建「我的实验」时勾选"待试"，先记录配方和计划，之后再补烧成结果。</div>`;
+    return;
+  }
+  wrap.innerHTML = notebook.map((rec,ni) => (rec.entryType==='experiment' && rec.status==='planned') ? nbCardHtml(rec, ni, 'planned') : '').join('');
+}
+
 // Mutation sites whose effect could be visible in both tabs at once (they're both
 // permanently in the DOM — switchTab only toggles .active) must refresh both, or the
 // tab you're not looking at goes stale until its next full render.
 function renderNbAndFav() {
   renderNotebook();
   renderFavTab();
+  renderPlannedTab();
 }
 
 async function toggleNbStar(ni) {
   const rec = notebook[ni];
   rec.starred = !rec.starred;
   await sb.from('notebook_entries').update({starred: rec.starred}).eq('id', rec.id);
+  renderNbAndFav();
+}
+
+// ── §A 待试配方: status='planned' 只对 entry_type='experiment' 有意义 ──
+async function markNbDone(ni) {
+  const rec = notebook[ni];
+  rec.status = 'done';
+  await sb.from('notebook_entries').update({status: 'done'}).eq('id', rec.id);
   renderNbAndFav();
 }
 function toggleNbBatchMode() {
@@ -3912,6 +3980,8 @@ function importNotebook(input) {
           folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
           entry_type: rec.entryType || 'experiment',
           source_info: rec.sourceInfo || {},
+          status: rec.status || 'done',
+          plan_notes: rec.planNotes || '',
         };
         const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
         if(error) continue;
@@ -4463,6 +4533,9 @@ function openBaseNbModal() {
   document.getElementById('nb-modal-num').value = '';
   document.getElementById('nb-modal-name').value = '';
   document.getElementById('nb-modal-note').value = '';
+  document.getElementById('nb-modal-planned').checked = false;
+  document.getElementById('nb-modal-plan-notes').value = '';
+  toggleNbPlanNotesField();
 
   const baseWrap = document.getElementById('nb-modal-base-wrap');
   baseWrap.innerHTML = baseIngredients.map(i =>
