@@ -888,6 +888,77 @@
   }
   .compare-collapsed-note { color: var(--ink3); grid-column: 2 / -1; font-family: var(--font-sans); }
 
+  /* ── 批量照片导入 + 手动框选建组 ── */
+  .batchmodal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(42,36,32,0.45);
+    z-index: 150; align-items: center; justify-content: center; padding: 24px;
+  }
+  .batchmodal-overlay.open { display: flex; }
+  .batchmodal {
+    background: var(--card); border-radius: 10px; border: 1px solid var(--line);
+    width: 100%; max-width: 980px; max-height: 88vh;
+    display: flex; flex-direction: column; animation: fadeIn 0.18s ease;
+  }
+  .batchmodal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.2rem 1.6rem; border-bottom: 1px solid var(--nb-line); flex-shrink: 0;
+  }
+  .batchmodal-head h3 { font-size: 1rem; font-weight: 400; letter-spacing: 0.06em; color: var(--nb); }
+  .batchmodal-scroll { overflow: auto; padding: 1.4rem 1.6rem 1.8rem; }
+
+  .batch-dropzone {
+    border: 1px dashed var(--line); border-radius: 8px; padding: 3rem 1rem;
+    text-align: center; color: var(--ink3); cursor: pointer;
+  }
+  .batch-dropzone:hover { border-color: var(--accent); color: var(--ink2); }
+  .batch-dropzone-icon { font-size: 1.8rem; margin-bottom: 8px; }
+
+  .batch-progress { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink3); margin-bottom: 10px; }
+  .batch-toolbar-row { display: flex; gap: 8px; }
+
+  .batch-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px;
+    margin-top: 8px; min-height: 40px;
+  }
+  .batch-thumb {
+    position: relative; aspect-ratio: 1; border-radius: 5px; overflow: hidden; cursor: pointer;
+    border: 2px solid transparent; background: var(--bg2);
+  }
+  .batch-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .batch-thumb.selected { border-color: var(--accent); }
+  .batch-thumb.selected::after {
+    content: '✓'; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: var(--accent); color: var(--bg);
+    font-size: 11px; display: flex; align-items: center; justify-content: center;
+  }
+  .batch-thumb-order {
+    position: absolute; bottom: 3px; left: 3px; background: rgba(0,0,0,0.6); color: #fff;
+    font-family: var(--font-mono); font-size: 0.62rem; padding: 1px 5px; border-radius: 3px;
+  }
+
+  .batch-group-card {
+    border: 1px solid var(--nb-line); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .batch-group-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .batch-group-card-title { font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink3); }
+  .batch-group-thumbstrip { display: flex; gap: 6px; flex-wrap: wrap; }
+  .batch-group-thumb { position: relative; width: 60px; height: 60px; border-radius: 4px; overflow: hidden; background: var(--bg2); }
+  .batch-group-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .batch-group-thumb.cover::before {
+    content: '封面'; position: absolute; top: 0; left: 0; background: var(--accent); color: var(--bg);
+    font-size: 0.58rem; padding: 1px 4px; border-radius: 0 0 4px 0;
+  }
+  .batch-group-thumb-remove {
+    position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; border-radius: 50%;
+    background: rgba(0,0,0,0.55); color: #fff; border: none; font-size: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+
+  .batch-step3-batchfields { display: flex; gap: 16px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--nb-line); }
+  .batch-step3-batchfields .nbmodal-row { flex: 1; margin-bottom: 0; }
+  .batch-groupform-effect-tags label { font-size: 0.72rem; margin-right: 10px; display: inline-block; margin-bottom: 4px; }
+
   /* ── 更多筛选 popover: full multi-select over every tag actually used ── */
   .tagpanelmodal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(42,36,32,0.45);
@@ -1277,6 +1348,7 @@
         <button class="io-btn io-btn-import" onclick="document.getElementById('nb-import-input').click()">↑ 导入 JSON</button>
         <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
         <button class="io-btn" id="nb-batch-btn" onclick="toggleNbBatchMode()">☑ 批量</button>
+        <button class="io-btn" onclick="openBatchImportModal()">⚏ 批量导入照片</button>
         <button class="nb-new-btn" onclick="openNbTypeChooser()">＋ 手动新建</button>
       </div>
     </div>
@@ -1453,6 +1525,17 @@
     <div class="nbmodal-btns">
       <button class="nbmodal-cancel" style="flex:none;width:100%" onclick="closeGlazeLibraryModal()">关闭</button>
     </div>
+  </div>
+</div>
+
+<!-- 批量照片导入 + 手动框选建组 -->
+<div class="batchmodal-overlay" id="batch-import-modal" onclick="closeBatchImportModal(event)">
+  <div class="batchmodal" onclick="event.stopPropagation()">
+    <div class="batchmodal-head">
+      <h3 id="batch-modal-title">批量导入照片</h3>
+      <button class="comparemodal-close" onclick="closeBatchImportModal()">✕</button>
+    </div>
+    <div class="batchmodal-scroll" id="batch-modal-body"></div>
   </div>
 </div>
 
@@ -3716,6 +3799,300 @@ function renderNotebook() {
   updateNbBatchCount();
 }
 
+// ── 批量照片导入 + 手动框选建组：框选零误判、不做 EXIF/AI 自动聚类 ──
+// batchFiles[i]: {id, file, url, groupId}；groupId===null 表示还未分组。
+// batchGroups[i]: {id, photoIds:[...], name, note, clayBody, firing, effectTags:[], starred}
+//   —— 一张照片属于至多一个组；组的第一张照片即封面；保存前 name 允许为空，
+//   兜底显示名只在渲染卡片时现算（见 genericDisplayName），绝不写回 name 列。
+const BATCH_MAX_PHOTOS = 100;
+let batchFiles = [];
+let batchGroups = [];
+let batchSelectedPhotoIds = [];
+let batchEntryType = 'collected';
+let batchFolderId = null;
+let batchStep = 1;
+let batchIdSeq = 1;
+let batchSaving = false;
+
+function batchFolderOptionsHtml(selectedId) {
+  let html = `<option value="" ${!selectedId?'selected':''}>未分类</option>`;
+  html += folders.map(f => `<option value="${f.id}" ${f.id===selectedId?'selected':''}>${f.name}</option>`).join('');
+  return html;
+}
+
+function openBatchImportModal() {
+  batchFiles = [];
+  batchGroups = [];
+  batchSelectedPhotoIds = [];
+  batchEntryType = 'collected';
+  batchFolderId = (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null;
+  batchStep = 1;
+  batchSaving = false;
+  renderBatchModalBody();
+  document.getElementById('batch-import-modal').classList.add('open');
+}
+
+function batchHasUnsavedWork() {
+  return batchFiles.length > 0 || batchGroups.length > 0;
+}
+function closeBatchImportModal(e) {
+  if(e && e.target !== document.getElementById('batch-import-modal')) return;
+  if(batchHasUnsavedWork()) {
+    const ungrouped = batchFiles.filter(f => f.groupId === null).length;
+    const ok = confirm(`还有 ${ungrouped} 张未分组 / ${batchGroups.length} 个试片未保存，确定离开？`);
+    if(!ok) return;
+  }
+  batchFiles.forEach(f => { try{ URL.revokeObjectURL(f.url); }catch(_){} });
+  document.getElementById('batch-import-modal').classList.remove('open');
+}
+
+function renderBatchModalBody() {
+  document.getElementById('batch-modal-title').textContent =
+    batchStep===1 ? '批量导入照片' : batchStep===2 ? '框选建组' : '逐条补信息';
+  const body = document.getElementById('batch-modal-body');
+  if(batchStep===1) body.innerHTML = renderBatchStep1();
+  else if(batchStep===2) body.innerHTML = renderBatchStep2();
+  else body.innerHTML = renderBatchStep3();
+}
+
+function renderBatchStep1() {
+  return `
+    <div class="batch-dropzone" onclick="document.getElementById('batch-file-input').click()">
+      <div class="batch-dropzone-icon">⚏</div>
+      <div>点击选择照片（可多选，最多 ${BATCH_MAX_PHOTOS} 张）</div>
+      <input type="file" id="batch-file-input" accept="image/*" multiple style="display:none" onchange="handleBatchFileSelect(this)">
+    </div>
+  `;
+}
+
+function handleBatchFileSelect(input) {
+  const files = Array.from(input.files || []).filter(f => f.type.startsWith('image/'));
+  input.value = '';
+  if(!files.length) return;
+  if(files.length > BATCH_MAX_PHOTOS) {
+    alert(`一次最多导入 ${BATCH_MAX_PHOTOS} 张，请分批选择（本次选了 ${files.length} 张）。`);
+    return;
+  }
+  files.sort((a,b) => (a.lastModified - b.lastModified) || a.name.localeCompare(b.name));
+  batchFiles = files.map(file => ({ id: batchIdSeq++, file, url: URL.createObjectURL(file), groupId: null }));
+  batchStep = 2;
+  renderBatchModalBody();
+}
+
+function renderBatchStep2() {
+  const ungrouped = batchFiles.filter(f => f.groupId === null);
+  const selCount = batchSelectedPhotoIds.length;
+  const groupOptions = batchGroups.map(g => `<option value="${g.id}">${batchGroupLabel(g)}</option>`).join('');
+  return `
+    <div class="nbmodal-row">
+      <span class="field-label" style="margin:0">整批类型</span>
+      <select onchange="batchEntryType=this.value">
+        <option value="collected" ${batchEntryType==='collected'?'selected':''}>采集试片</option>
+        <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>自己实验</option>
+        <option value="composite_test" ${batchEntryType==='composite_test'?'selected':''}>复合釉试片</option>
+      </select>
+    </div>
+    <div class="batch-progress">未分组 ${ungrouped.length} 张 · 已建 ${batchGroups.length} 个试片</div>
+    <div class="batch-toolbar-row">
+      <button class="io-btn" ${selCount?'':'disabled'} onclick="batchCreateGroup()">建为一个试片（已选 ${selCount}）</button>
+      ${batchGroups.length ? `<select id="batch-add-to-group-select" ${selCount?'':'disabled'}><option value="">添加到已有试片…</option>${groupOptions}</select>
+      <button class="io-btn" ${selCount?'':'disabled'} onclick="batchAddSelectedToGroup()">添加</button>` : ''}
+      <button class="io-btn" ${selCount?'':'disabled'} onclick="batchSelectedPhotoIds=[];renderBatchModalBody()">取消选择</button>
+    </div>
+    <div class="batch-grid">
+      ${ungrouped.map(f => `
+        <div class="batch-thumb ${batchSelectedPhotoIds.includes(f.id)?'selected':''}" onclick="batchToggleSelect(${f.id})">
+          <img src="${f.url}" loading="lazy">
+        </div>
+      `).join('')}
+    </div>
+    ${!ungrouped.length && !batchGroups.length ? '<div class="batch-progress">没有可分组的照片了</div>' : ''}
+    ${batchGroups.length ? `<div class="field-label" style="margin-top:18px">已建试片</div>${batchGroups.map((g,gi)=>batchGroupCardHtml(g,gi)).join('')}` : ''}
+    <div class="nbmodal-btns" style="margin-top:16px">
+      <button class="nbmodal-cancel" onclick="closeBatchImportModal()">取消</button>
+      <button class="nbmodal-confirm" ${batchGroups.length?'':'disabled'} onclick="batchProceedToStep3()">下一步：补充信息（${batchGroups.length}）</button>
+    </div>
+  `;
+}
+
+function batchGroupLabel(g) {
+  return `试片 · ${g.photoIds.length} 张`;
+}
+function batchGroupCardHtml(g, gi) {
+  const photos = g.photoIds.map(pid => batchFiles.find(f=>f.id===pid)).filter(Boolean);
+  return `
+    <div class="batch-group-card">
+      <div class="batch-group-card-head">
+        <span class="batch-group-card-title">${batchGroupLabel(g)}</span>
+        <button class="btn-icon" onclick="batchDisbandGroup(${g.id})" title="解散此组">解散</button>
+      </div>
+      <div class="batch-group-thumbstrip">
+        ${photos.map((f,pi) => `
+          <div class="batch-group-thumb ${pi===0?'cover':''}">
+            <img src="${f.url}">
+            <button class="batch-group-thumb-remove" onclick="batchRemovePhotoFromGroup(${g.id},${f.id})" title="移出此组">×</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function batchToggleSelect(photoId) {
+  const i = batchSelectedPhotoIds.indexOf(photoId);
+  if(i === -1) batchSelectedPhotoIds.push(photoId);
+  else batchSelectedPhotoIds.splice(i, 1);
+  renderBatchModalBody();
+}
+
+function batchCreateGroup() {
+  if(!batchSelectedPhotoIds.length) return;
+  const group = { id: batchIdSeq++, photoIds: [...batchSelectedPhotoIds], name:'', note:'', clayBody:'', firing:'', effectTags:[], starred:false };
+  batchFiles.forEach(f => { if(batchSelectedPhotoIds.includes(f.id)) f.groupId = group.id; });
+  batchGroups.push(group);
+  batchSelectedPhotoIds = [];
+  renderBatchModalBody();
+}
+
+function batchAddSelectedToGroup() {
+  const sel = document.getElementById('batch-add-to-group-select');
+  const groupId = sel ? parseInt(sel.value) : NaN;
+  if(!groupId || !batchSelectedPhotoIds.length) return;
+  const group = batchGroups.find(g => g.id === groupId);
+  if(!group) return;
+  batchFiles.forEach(f => { if(batchSelectedPhotoIds.includes(f.id)) { f.groupId = group.id; group.photoIds.push(f.id); } });
+  batchSelectedPhotoIds = [];
+  renderBatchModalBody();
+}
+
+function batchRemovePhotoFromGroup(groupId, photoId) {
+  const group = batchGroups.find(g => g.id === groupId);
+  if(!group) return;
+  group.photoIds = group.photoIds.filter(id => id !== photoId);
+  const f = batchFiles.find(f => f.id === photoId);
+  if(f) f.groupId = null;
+  if(!group.photoIds.length) batchGroups = batchGroups.filter(g => g.id !== groupId);
+  renderBatchModalBody();
+}
+
+function batchDisbandGroup(groupId) {
+  if(!confirm('解散这个试片分组？照片会回到未分组。')) return;
+  const group = batchGroups.find(g => g.id === groupId);
+  if(!group) return;
+  batchFiles.forEach(f => { if(f.groupId === groupId) f.groupId = null; });
+  batchGroups = batchGroups.filter(g => g.id !== groupId);
+  renderBatchModalBody();
+}
+
+function batchProceedToStep3() {
+  if(!batchGroups.length) return;
+  batchStep = 3;
+  renderBatchModalBody();
+}
+function batchBackToStep2() {
+  batchStep = 2;
+  renderBatchModalBody();
+}
+
+function batchEffectTagsHtml(tags, gi) {
+  return EFFECT_TAG_OPTIONS.map(t => {
+    const checked = tags.includes(t);
+    return `<label style="font-size:0.72rem;margin-right:10px;display:inline-block;margin-bottom:4px"><input type="checkbox" ${checked?'checked':''} onchange="batchToggleEffectTag(${gi},'${t}',this.checked)"> ${t}</label>`;
+  }).join('');
+}
+function batchToggleEffectTag(gi, tag, on) {
+  const g = batchGroups[gi];
+  if(!g) return;
+  if(on) { if(!g.effectTags.includes(tag)) g.effectTags.push(tag); }
+  else g.effectTags = g.effectTags.filter(t => t !== tag);
+}
+
+function renderBatchStep3() {
+  const today = new Date().toLocaleDateString('zh-CN');
+  return `
+    <div class="batch-step3-batchfields">
+      <div class="nbmodal-row">
+        <span class="field-label" style="margin:0">整批文件夹</span>
+        <select onchange="batchFolderId=this.value||null">${batchFolderOptionsHtml(batchFolderId)}</select>
+      </div>
+      <div class="nbmodal-row">
+        <span class="field-label" style="margin:0">整批类型</span>
+        <select onchange="batchEntryType=this.value">
+          <option value="collected" ${batchEntryType==='collected'?'selected':''}>采集试片</option>
+          <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>自己实验</option>
+          <option value="composite_test" ${batchEntryType==='composite_test'?'selected':''}>复合釉试片</option>
+        </select>
+      </div>
+    </div>
+    ${batchGroups.map((g,gi) => {
+      const photos = g.photoIds.map(pid => batchFiles.find(f=>f.id===pid)).filter(Boolean);
+      return `
+      <div class="batch-group-card">
+        <div class="batch-group-thumbstrip" style="margin-bottom:10px">
+          ${photos.map((f,pi) => `<div class="batch-group-thumb ${pi===0?'cover':''}"><img src="${f.url}"></div>`).join('')}
+        </div>
+        <input type="text" placeholder="未命名试片 · 导入 ${today}（留空则用此兜底名）" maxlength="60" value="${(g.name||'').replace(/"/g,'&quot;')}" oninput="batchGroups[${gi}].name=this.value">
+        <textarea placeholder="备注" oninput="batchGroups[${gi}].note=this.value" style="margin-top:6px">${g.note||''}</textarea>
+        <div class="nbmodal-row" style="margin-top:6px">
+          <span style="font-size:0.72rem;color:var(--ink3);align-self:center">泥料</span>
+          <input type="text" placeholder="选填" value="${(g.clayBody||'').replace(/"/g,'&quot;')}" oninput="batchGroups[${gi}].clayBody=this.value">
+        </div>
+        <div class="nbmodal-row">
+          <span style="font-size:0.72rem;color:var(--ink3);align-self:center">烧成</span>
+          <input type="text" placeholder="选填" value="${(g.firing||'').replace(/"/g,'&quot;')}" oninput="batchGroups[${gi}].firing=this.value">
+        </div>
+        <div class="batch-groupform-effect-tags" style="margin-top:6px">${batchEffectTagsHtml(g.effectTags, gi)}</div>
+        <label style="font-size:0.72rem;margin-top:4px;display:inline-block"><input type="checkbox" ${g.starred?'checked':''} onchange="batchGroups[${gi}].starred=this.checked"> ★ 加星</label>
+      </div>
+    `; }).join('')}
+    <div class="nbmodal-btns" style="margin-top:16px">
+      <button class="nbmodal-cancel" onclick="batchBackToStep2()">← 返回分组</button>
+      <button class="nbmodal-confirm" onclick="confirmBatchSaveAll()">保存全部（${batchGroups.length}）</button>
+    </div>
+  `;
+}
+
+async function confirmBatchSaveAll() {
+  if(batchSaving || !batchGroups.length) return;
+  batchSaving = true;
+  const errors = [];
+  const savedGroupIds = [];
+  for(const g of batchGroups) {
+    const photos = g.photoIds.map(pid => batchFiles.find(f=>f.id===pid)).filter(Boolean);
+    const payload = {
+      num: '', name: (g.name||'').trim(), note: (g.note||'').trim(),
+      base_ingredients: [], base_dry: 0, base_water: 0, glazes: [], additives: {},
+      entry_type: batchEntryType, status: 'done',
+      folder_id: batchFolderId,
+      clay_body: (g.clayBody||'').trim(), firing: (g.firing||'').trim(),
+      effect_tags: g.effectTags||[], starred: !!g.starred,
+    };
+    const { data, error } = await sb.from('notebook_entries').insert(payload).select().single();
+    if(error) { errors.push(`试片(${photos.length}张)：${error.message}`); continue; }
+    const rec = rowToNotebook(data);
+    notebook.unshift(rec);
+    if(photos.length) {
+      await uploadPhotos('notebook_entries', rec.id, photos.map(p=>p.file), ()=>{});
+    }
+    savedGroupIds.push(g.id);
+  }
+  batchSaving = false;
+  // 保存成功的组从工作台里移除（连带其照片），失败的留下以便修正后重试——
+  // 不整批清空，避免一次网络抖动就要用户重做所有分组。
+  const savedPhotoIds = new Set();
+  batchGroups.filter(g => savedGroupIds.includes(g.id)).forEach(g => g.photoIds.forEach(id => savedPhotoIds.add(id)));
+  batchFiles = batchFiles.filter(f => { if(savedPhotoIds.has(f.id)) { try{ URL.revokeObjectURL(f.url); }catch(_){} return false; } return true; });
+  batchGroups = batchGroups.filter(g => !savedGroupIds.includes(g.id));
+  updateNbBadge();
+  renderNbAndFav();
+  if(errors.length) {
+    alert('部分试片保存失败，已跳过：\n' + errors.join('\n') + '\n\n已成功保存的试片已从此窗口移除，失败的留在这里，修正后可重试。');
+    renderBatchModalBody();
+    return;
+  }
+  document.getElementById('batch-import-modal').classList.remove('open');
+}
+
 // ── 文件夹切换栏：全部 | 各文件夹(条目数) | 未分类(条目数) | ⚙ 管理 ──
 // 计数始终基于全量 notebook（不随标签/搜索变化），和「更多筛选」弹层里标签计数的口径一致。
 function renderNbFolderBar() {
@@ -4039,7 +4416,8 @@ function nbCardHtml(rec, ni, idPrefix) {
     `<span class="nb-additive-tag">${name} +${(+pct).toFixed(3)}%</span>`
   ).join('');
   // §B 复合釉试片：显示名未手动填写时，从图层栈（底→面）实时生成，不写库
-  const displayName = isComposite ? compositeDisplayName(rec) : rec.name;
+  // 批量导入的记录同理允许 name 为空，兜底显示"未命名试片 · 导入 <日期>"，同样绝不写回 name 列
+  const displayName = isComposite ? compositeDisplayName(rec) : (rec.name || `未命名试片 · 导入 ${rec.savedAt}`);
   const compositeLayersHtml = isComposite ? (() => {
     const layers = layersForEntry(rec.id);
     if(!layers.length) return '';
