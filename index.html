@@ -917,7 +917,7 @@
   .batch-dropzone-icon { font-size: 1.8rem; margin-bottom: 8px; }
 
   .batch-progress { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink3); margin-bottom: 10px; }
-  .batch-toolbar-row { display: flex; gap: 8px; }
+  .batch-toolbar-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
 
   .batch-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px;
@@ -3891,26 +3891,19 @@ function handleBatchFileSelect(input) {
 function renderBatchStep2() {
   const ungrouped = batchFiles.filter(f => f.groupId === null);
   const selCount = batchSelectedPhotoIds.length;
-  const groupOptions = batchGroups.map(g => `<option value="${g.id}">${batchGroupLabel(g)}</option>`).join('');
+  const groupOptions = batchGroups.map((g,gi) => `<option value="${g.id}">${batchGroupLabel(g,gi)}</option>`).join('');
   return `
-    <div class="nbmodal-row">
-      <span class="field-label" style="margin:0">整批类型</span>
-      <select onchange="batchEntryType=this.value">
-        <option value="collected" ${batchEntryType==='collected'?'selected':''}>采集试片</option>
-        <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>我的实验</option>
-        <option value="composite_test" ${batchEntryType==='composite_test'?'selected':''}>复合釉试片</option>
-      </select>
-    </div>
     <div class="batch-progress">未分组 ${ungrouped.length} 张 · 已建 ${batchGroups.length} 个试片</div>
     <div class="batch-toolbar-row">
       <button class="io-btn" ${selCount?'':'disabled'} onclick="batchCreateGroup()">建为一个试片（已选 ${selCount}）</button>
       ${batchGroups.length ? `<select id="batch-add-to-group-select" ${selCount?'':'disabled'}><option value="">添加到已有试片…</option>${groupOptions}</select>
       <button class="io-btn" ${selCount?'':'disabled'} onclick="batchAddSelectedToGroup()">添加</button>` : ''}
+      ${ungrouped.length ? `<button class="io-btn" onclick="batchSelectAllUngrouped()">全选未分组</button>` : ''}
       <button class="io-btn" ${selCount?'':'disabled'} onclick="batchSelectedPhotoIds=[];renderBatchModalBody()">取消选择</button>
     </div>
     <div class="batch-grid">
       ${ungrouped.map(f => `
-        <div class="batch-thumb ${batchSelectedPhotoIds.includes(f.id)?'selected':''}" onclick="batchToggleSelect(${f.id})">
+        <div class="batch-thumb ${batchSelectedPhotoIds.includes(f.id)?'selected':''}" onclick="batchToggleSelect('${f.id}')">
           <img src="${f.url}" loading="lazy">
         </div>
       `).join('')}
@@ -3924,22 +3917,22 @@ function renderBatchStep2() {
   `;
 }
 
-function batchGroupLabel(g) {
-  return `试片 · ${g.photoIds.length} 张`;
+function batchGroupLabel(g, gi) {
+  return `试片${gi+1} · ${g.photoIds.length} 张`;
 }
 function batchGroupCardHtml(g, gi) {
   const photos = g.photoIds.map(pid => batchFiles.find(f=>f.id===pid)).filter(Boolean);
   return `
     <div class="batch-group-card">
       <div class="batch-group-card-head">
-        <span class="batch-group-card-title">${batchGroupLabel(g)}</span>
-        <button class="btn-icon" onclick="batchDisbandGroup(${g.id})" title="解散此组">解散</button>
+        <span class="batch-group-card-title">${batchGroupLabel(g,gi)}</span>
+        <button class="btn-icon" onclick="batchDisbandGroup('${g.id}')" title="解散此组">解散</button>
       </div>
       <div class="batch-group-thumbstrip">
         ${photos.map((f,pi) => `
           <div class="batch-group-thumb ${pi===0?'cover':''}">
             <img src="${f.url}">
-            <button class="batch-group-thumb-remove" onclick="batchRemovePhotoFromGroup(${g.id},${f.id})" title="移出此组">×</button>
+            <button class="batch-group-thumb-remove" onclick="batchRemovePhotoFromGroup('${g.id}','${f.id}')" title="移出此组">×</button>
           </div>
         `).join('')}
       </div>
@@ -3948,9 +3941,14 @@ function batchGroupCardHtml(g, gi) {
 }
 
 function batchToggleSelect(photoId) {
+  photoId = Number(photoId);
   const i = batchSelectedPhotoIds.indexOf(photoId);
   if(i === -1) batchSelectedPhotoIds.push(photoId);
   else batchSelectedPhotoIds.splice(i, 1);
+  renderBatchModalBody();
+}
+function batchSelectAllUngrouped() {
+  batchSelectedPhotoIds = batchFiles.filter(f => f.groupId === null).map(f => f.id);
   renderBatchModalBody();
 }
 
@@ -3975,8 +3973,12 @@ function batchAddSelectedToGroup() {
 }
 
 function batchRemovePhotoFromGroup(groupId, photoId) {
+  groupId = Number(groupId); photoId = Number(photoId);
   const group = batchGroups.find(g => g.id === groupId);
   if(!group) return;
+  if(group.photoIds.length <= 1) {
+    if(!confirm('这是这个试片的最后一张照片，移出将连同该组一起解散，之前填的名称/备注/图层等信息也会丢失。确定吗？')) return;
+  }
   group.photoIds = group.photoIds.filter(id => id !== photoId);
   const f = batchFiles.find(f => f.id === photoId);
   if(f) f.groupId = null;
@@ -3985,6 +3987,7 @@ function batchRemovePhotoFromGroup(groupId, photoId) {
 }
 
 function batchDisbandGroup(groupId) {
+  groupId = Number(groupId);
   if(!confirm('解散这个试片分组？照片会回到未分组。')) return;
   const group = batchGroups.find(g => g.id === groupId);
   if(!group) return;
