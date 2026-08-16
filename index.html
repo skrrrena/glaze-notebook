@@ -2129,24 +2129,26 @@ async function updatePhotoCaption(table, id, idx, caption) {
 }
 
 // ── shared photo upload helper ──
-async function uploadPhotos(table, id, files, rerenderFn) {
+async function uploadPhotos(table, id, files, rerenderFn, opts={}) {
   const record = _findRecord(table, id);
-  if(!record) return;
+  if(!record) return { total: 0, uploadedCount: 0, failedCount: 0 };
   const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
-  if(!imageFiles.length) return;
+  if(!imageFiles.length) return { total: 0, uploadedCount: 0, failedCount: 0 };
   const encoded = await Promise.all(imageFiles.map(f => resizeAndEncode(f, PHOTO_SIZE)));
   const folder = 'notebook';
   const newEntries = [];
+  let failedCount = 0;
   for (const dataURL of encoded) {
     const path = `${currentUserId}/${folder}/${id}/${crypto.randomUUID()}.jpg`;
     const { error } = await sb.storage.from(PHOTO_BUCKET).upload(path, _blobFromDataURL(dataURL), {contentType:'image/jpeg'});
-    if(error) { alert('图片上传失败：'+error.message); continue; }
+    if(error) { failedCount++; if(!opts.silent) alert('图片上传失败：'+error.message); continue; }
     newEntries.push({path, caption:''});
   }
   record.photos = [...(record.photos||[]), ...newEntries];
   await resolvePhotoUrls([record]);
   await savePhotosField(table, id, record.photos);
   rerenderFn();
+  return { total: imageFiles.length, uploadedCount: newEntries.length, failedCount };
 }
 
 async function deletePhoto(table, id, idx, rerenderFn) {
@@ -3486,11 +3488,15 @@ function compositeGlazeOptionsHtml(selectedId) {
   return '<option value="">请选择…</option>' +
     compositeGlazes.map(g=>`<option value="${g.id}" ${g.id===selectedId?'selected':''}>${g.name}${g.brand?' · '+g.brand:''}</option>`).join('');
 }
+function glazeLibraryEmptyHintHtml() {
+  if(compositeGlazes.length > 0) return '';
+  return `<div class="import-hint" style="margin-bottom:6px">釉库还是空的，图层选不出成品釉。<button class="btn-ghost" style="font-size:0.72rem;padding:1px 6px" onclick="openGlazeLibraryModal()">⚙ 先去釉库添加</button></div>`;
+}
 function renderCompositeLayers() {
   const w = document.getElementById('composite-layers-wrap');
-  w.innerHTML = compositeModalLayers.map((l,i) => `
+  w.innerHTML = glazeLibraryEmptyHintHtml() + compositeModalLayers.map((l,i) => `
     <div class="nb-layer-edit-row">
-      <span class="nb-layer-order-num">${i===0?'底':i+1}</span>
+      <span class="nb-layer-order-num">${i+1}</span>
       <select onchange="compositeModalLayers[${i}].glazeId=this.value">${compositeGlazeOptionsHtml(l.glazeId)}</select>
       <input type="text" value="${(l.application||'').replace(/"/g,'&quot;')}" placeholder="施釉方式" oninput="compositeModalLayers[${i}].application=this.value">
       <input type="number" class="nb-layer-coats-input" min="1" step="1" value="${l.coats||1}" title="遍数" oninput="compositeModalLayers[${i}].coats=parseInt(this.value)||1">
@@ -3891,7 +3897,7 @@ function renderBatchStep2() {
       <span class="field-label" style="margin:0">整批类型</span>
       <select onchange="batchEntryType=this.value">
         <option value="collected" ${batchEntryType==='collected'?'selected':''}>采集试片</option>
-        <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>自己实验</option>
+        <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>我的实验</option>
         <option value="composite_test" ${batchEntryType==='composite_test'?'selected':''}>复合釉试片</option>
       </select>
     </div>
@@ -4014,9 +4020,9 @@ function batchGroupLayersHtml(gi) {
   const g = batchGroups[gi];
   if(!g) return '';
   if(!g.layers.length) g.layers.push({glazeId:'', application:'', coats:1});
-  return g.layers.map((l,i) => `
+  return glazeLibraryEmptyHintHtml() + g.layers.map((l,i) => `
     <div class="nb-layer-edit-row">
-      <span class="nb-layer-order-num">${i===0?'底':i+1}</span>
+      <span class="nb-layer-order-num">${i+1}</span>
       <select onchange="batchGroups[${gi}].layers[${i}].glazeId=this.value">${compositeGlazeOptionsHtml(l.glazeId)}</select>
       <input type="text" value="${(l.application||'').replace(/"/g,'&quot;')}" placeholder="施釉方式" oninput="batchGroups[${gi}].layers[${i}].application=this.value">
       <input type="number" class="nb-layer-coats-input" min="1" step="1" value="${l.coats||1}" title="遍数" oninput="batchGroups[${gi}].layers[${i}].coats=parseInt(this.value)||1">
@@ -4063,7 +4069,7 @@ function renderBatchStep3() {
         <span class="field-label" style="margin:0">整批类型</span>
         <select onchange="batchEntryType=this.value;renderBatchModalBody()">
           <option value="collected" ${batchEntryType==='collected'?'selected':''}>采集试片</option>
-          <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>自己实验</option>
+          <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>我的实验</option>
           <option value="composite_test" ${batchEntryType==='composite_test'?'selected':''}>复合釉试片</option>
         </select>
       </div>
@@ -4125,7 +4131,14 @@ async function confirmBatchSaveAll() {
     const rec = rowToNotebook(data);
     notebook.unshift(rec);
     if(photos.length) {
-      await uploadPhotos('notebook_entries', rec.id, photos.map(p=>p.file), ()=>{});
+      try {
+        const upl = await uploadPhotos('notebook_entries', rec.id, photos.map(p=>p.file), ()=>{}, {silent:true});
+        if(upl && upl.failedCount > 0) {
+          errors.push(`试片「${rec.name||'未命名'}」：记录已保存，但 ${upl.failedCount}/${upl.total} 张照片上传失败，请打开该记录重新补传照片`);
+        }
+      } catch(e) {
+        errors.push(`试片「${rec.name||'未命名'}」：记录已保存，但照片上传出错（${e.message||e}），请打开该记录重新补传照片`);
+      }
     }
     if(batchEntryType === 'composite_test') {
       const validLayers = g.layers.filter(l => l.glazeId);
