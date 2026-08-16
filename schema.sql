@@ -256,3 +256,5 @@ create policy "cl delete own" on public.composite_layers for delete using (auth.
 
 alter table public.notebook_entries add column if not exists clay_body text; -- 泥料
 alter table public.notebook_entries add column if not exists firing text;    -- 烧成，先用文本，后续接烧成曲线系统
+
+alter table public.composite_layers add column if not exists coats int not null default 1; -- 该层施釉遍数（如"底釉刷2遍"）

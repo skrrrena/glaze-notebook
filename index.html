@@ -537,10 +537,11 @@
   }
   /* §B 复合釉试片: 叠成品釉，无配方成分可算，用双线边框和"叠"角标区分 */
   .nb-card-composite { border-style: double; border-width: 4px; }
-  .nb-composite-badge {
-    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
-    color: var(--nb); border: 1px solid var(--nb); border-radius: 3px;
-    padding: 1px 5px; flex-shrink: 0;
+  .nb-composite-badge-icon {
+    display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+  }
+  .nb-composite-badge-count {
+    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.02em; color: var(--ink3);
   }
   .nb-layer-stack { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 6px 0; font-size: 0.78rem; }
   .nb-layer-chip { padding: 2px 8px; border-radius: 3px; background: var(--nb-bg); color: var(--nb); border: 1px solid var(--nb-line); }
@@ -662,8 +663,9 @@
   .nbmodal-cancel:hover { background: var(--bg2); }
   .nb-additive-editor { margin-top: 8px; }
   .nb-additive-edit-row { display: grid; grid-template-columns: 1fr 90px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
-  .nb-layer-edit-row { display: grid; grid-template-columns: 20px 1fr 90px 24px 24px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .nb-layer-edit-row { display: grid; grid-template-columns: 20px 1fr 90px 46px 24px 24px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
   .nb-layer-order-num { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink3); text-align: center; }
+  .nb-layer-coats-input { width: 100%; text-align: center; }
   .glazelib-row { display: grid; grid-template-columns: 1fr 80px 28px; gap: 6px; margin-bottom: 6px; align-items: center; font-size: 0.8rem; }
 
   /* share card modal */
@@ -1921,7 +1923,7 @@ function rowToCompositeGlaze(row) {
   };
 }
 function rowToCompositeLayer(row) {
-  return { id: row.id, entryId: row.entry_id, glazeId: row.glaze_id, layerOrder: row.layer_order, application: row.application || '' };
+  return { id: row.id, entryId: row.entry_id, glazeId: row.glaze_id, layerOrder: row.layer_order, application: row.application || '', coats: row.coats || 1 };
 }
 // 某试片记录当前的叠釉图层（底→面），已按 layer_order 排好序
 function layersForEntry(entryId) {
@@ -3468,7 +3470,7 @@ function openCompositeModal() {
   document.getElementById('composite-firing').value = '';
   document.getElementById('composite-note').value = '';
   autoGrowTextarea(document.getElementById('composite-note'));
-  compositeModalLayers = [{glazeId:'', application:''}, {glazeId:'', application:''}];
+  compositeModalLayers = [{glazeId:'', application:'', coats:1}, {glazeId:'', application:'', coats:1}];
   renderCompositeLayers();
   document.getElementById('composite-effect-tags').innerHTML = compositeEffectTagCheckboxesHtml([]);
   document.getElementById('composite-modal').classList.add('open');
@@ -3491,13 +3493,14 @@ function renderCompositeLayers() {
       <span class="nb-layer-order-num">${i===0?'底':i+1}</span>
       <select onchange="compositeModalLayers[${i}].glazeId=this.value">${compositeGlazeOptionsHtml(l.glazeId)}</select>
       <input type="text" value="${(l.application||'').replace(/"/g,'&quot;')}" placeholder="施釉方式" oninput="compositeModalLayers[${i}].application=this.value">
+      <input type="number" class="nb-layer-coats-input" min="1" step="1" value="${l.coats||1}" title="遍数" oninput="compositeModalLayers[${i}].coats=parseInt(this.value)||1">
       <button class="btn-icon" ${i===0?'disabled style="opacity:0.3"':''} onclick="compositeMoveLayer(${i},-1)" title="上移">↑</button>
       <button class="btn-icon" ${i===compositeModalLayers.length-1?'disabled style="opacity:0.3"':''} onclick="compositeMoveLayer(${i},1)" title="下移">↓</button>
       <button class="btn-icon" onclick="compositeModalLayers.splice(${i},1);renderCompositeLayers()" title="删除">×</button>
     </div>
   `).join('');
 }
-function compositeAddLayer() { compositeModalLayers.push({glazeId:'', application:''}); renderCompositeLayers(); }
+function compositeAddLayer() { compositeModalLayers.push({glazeId:'', application:'', coats:1}); renderCompositeLayers(); }
 function compositeMoveLayer(i, dir) {
   const j = i + dir;
   if(j < 0 || j >= compositeModalLayers.length) return;
@@ -3538,7 +3541,7 @@ async function confirmCompositeSave() {
   // 图层整体替换：先删旧的再插入新的，比逐条 diff 简单可靠，层数很少，量级不是问题
   await sb.from('composite_layers').delete().eq('entry_id', entryId);
   compositeLayers = compositeLayers.filter(l => l.entryId !== entryId);
-  const layerRows = validLayers.map((l,i) => ({ entry_id: entryId, glaze_id: l.glazeId, layer_order: i+1, application: (l.application||'').trim() || null }));
+  const layerRows = validLayers.map((l,i) => ({ entry_id: entryId, glaze_id: l.glazeId, layer_order: i+1, application: (l.application||'').trim() || null, coats: l.coats||1 }));
   const { data: newLayers, error: layerErr } = await sb.from('composite_layers').insert(layerRows).select();
   if(layerErr) { alert('图层保存失败：'+layerErr.message); }
   else compositeLayers.push(...(newLayers||[]).map(rowToCompositeLayer));
@@ -3559,7 +3562,7 @@ function openCompositeModalEdit(ni) {
   document.getElementById('composite-note').value = rec.note || '';
   autoGrowTextarea(document.getElementById('composite-note'));
   const existing = layersForEntry(rec.id);
-  compositeModalLayers = existing.length ? existing.map(l => ({glazeId: l.glazeId, application: l.application})) : [{glazeId:'', application:''}];
+  compositeModalLayers = existing.length ? existing.map(l => ({glazeId: l.glazeId, application: l.application, coats: l.coats||1})) : [{glazeId:'', application:'', coats:1}];
   renderCompositeLayers();
   document.getElementById('composite-effect-tags').innerHTML = compositeEffectTagCheckboxesHtml(rec.effectTags);
   document.getElementById('composite-modal').classList.add('open');
@@ -3947,7 +3950,7 @@ function batchToggleSelect(photoId) {
 
 function batchCreateGroup() {
   if(!batchSelectedPhotoIds.length) return;
-  const group = { id: batchIdSeq++, photoIds: [...batchSelectedPhotoIds], name:'', note:'', clayBody:'', firing:'', effectTags:[], starred:false };
+  const group = { id: batchIdSeq++, photoIds: [...batchSelectedPhotoIds], name:'', note:'', clayBody:'', firing:'', effectTags:[], starred:false, layers:[] };
   batchFiles.forEach(f => { if(batchSelectedPhotoIds.includes(f.id)) f.groupId = group.id; });
   batchGroups.push(group);
   batchSelectedPhotoIds = [];
@@ -4007,6 +4010,47 @@ function batchToggleEffectTag(gi, tag, on) {
   else g.effectTags = g.effectTags.filter(t => t !== tag);
 }
 
+function batchGroupLayersHtml(gi) {
+  const g = batchGroups[gi];
+  if(!g) return '';
+  if(!g.layers.length) g.layers.push({glazeId:'', application:'', coats:1});
+  return g.layers.map((l,i) => `
+    <div class="nb-layer-edit-row">
+      <span class="nb-layer-order-num">${i===0?'底':i+1}</span>
+      <select onchange="batchGroups[${gi}].layers[${i}].glazeId=this.value">${compositeGlazeOptionsHtml(l.glazeId)}</select>
+      <input type="text" value="${(l.application||'').replace(/"/g,'&quot;')}" placeholder="施釉方式" oninput="batchGroups[${gi}].layers[${i}].application=this.value">
+      <input type="number" class="nb-layer-coats-input" min="1" step="1" value="${l.coats||1}" title="遍数" oninput="batchGroups[${gi}].layers[${i}].coats=parseInt(this.value)||1">
+      <button class="btn-icon" ${i===0?'disabled style="opacity:0.3"':''} onclick="batchMoveLayer(${gi},${i},-1)" title="上移">↑</button>
+      <button class="btn-icon" ${i===g.layers.length-1?'disabled style="opacity:0.3"':''} onclick="batchMoveLayer(${gi},${i},1)" title="下移">↓</button>
+      <button class="btn-icon" onclick="batchRemoveLayer(${gi},${i})" title="删除">×</button>
+    </div>
+  `).join('');
+}
+function renderBatchGroupLayers(gi) {
+  const w = document.getElementById(`batch-layers-wrap-${gi}`);
+  if(w) w.innerHTML = batchGroupLayersHtml(gi);
+}
+function batchAddLayer(gi) {
+  const g = batchGroups[gi];
+  if(!g) return;
+  g.layers.push({glazeId:'', application:'', coats:1});
+  renderBatchGroupLayers(gi);
+}
+function batchMoveLayer(gi, i, dir) {
+  const g = batchGroups[gi];
+  if(!g) return;
+  const j = i + dir;
+  if(j < 0 || j >= g.layers.length) return;
+  [g.layers[i], g.layers[j]] = [g.layers[j], g.layers[i]];
+  renderBatchGroupLayers(gi);
+}
+function batchRemoveLayer(gi, i) {
+  const g = batchGroups[gi];
+  if(!g) return;
+  g.layers.splice(i, 1);
+  renderBatchGroupLayers(gi);
+}
+
 function renderBatchStep3() {
   const today = new Date().toLocaleDateString('zh-CN');
   return `
@@ -4017,7 +4061,7 @@ function renderBatchStep3() {
       </div>
       <div class="nbmodal-row">
         <span class="field-label" style="margin:0">整批类型</span>
-        <select onchange="batchEntryType=this.value">
+        <select onchange="batchEntryType=this.value;renderBatchModalBody()">
           <option value="collected" ${batchEntryType==='collected'?'selected':''}>采集试片</option>
           <option value="experiment" ${batchEntryType==='experiment'?'selected':''}>自己实验</option>
           <option value="composite_test" ${batchEntryType==='composite_test'?'selected':''}>复合釉试片</option>
@@ -4041,6 +4085,11 @@ function renderBatchStep3() {
           <span style="font-size:0.72rem;color:var(--ink3);align-self:center">烧成</span>
           <input type="text" placeholder="选填" value="${(g.firing||'').replace(/"/g,'&quot;')}" oninput="batchGroups[${gi}].firing=this.value">
         </div>
+        ${batchEntryType==='composite_test' ? `
+        <div class="field-label" style="margin-top:8px">叠釉（底→面）</div>
+        <div id="batch-layers-wrap-${gi}">${batchGroupLayersHtml(gi)}</div>
+        <button class="btn-icon" style="width:auto;padding:2px 8px" onclick="batchAddLayer(${gi})">＋ 加一层</button>
+        ` : ''}
         <div class="batch-groupform-effect-tags" style="margin-top:6px">${batchEffectTagsHtml(g.effectTags, gi)}</div>
         <label style="font-size:0.72rem;margin-top:4px;display:inline-block"><input type="checkbox" ${g.starred?'checked':''} onchange="batchGroups[${gi}].starred=this.checked"> ★ 加星</label>
       </div>
@@ -4054,6 +4103,10 @@ function renderBatchStep3() {
 
 async function confirmBatchSaveAll() {
   if(batchSaving || !batchGroups.length) return;
+  if(batchEntryType === 'composite_test') {
+    const emptyIdx = batchGroups.findIndex(g => !g.layers.filter(l=>l.glazeId).length);
+    if(emptyIdx !== -1) { alert(`第 ${emptyIdx+1} 组复合釉试片至少需要一层釉，请先补全再保存`); return; }
+  }
   batchSaving = true;
   const errors = [];
   const savedGroupIds = [];
@@ -4073,6 +4126,13 @@ async function confirmBatchSaveAll() {
     notebook.unshift(rec);
     if(photos.length) {
       await uploadPhotos('notebook_entries', rec.id, photos.map(p=>p.file), ()=>{});
+    }
+    if(batchEntryType === 'composite_test') {
+      const validLayers = g.layers.filter(l => l.glazeId);
+      const layerRows = validLayers.map((l,i) => ({ entry_id: rec.id, glaze_id: l.glazeId, layer_order: i+1, application: (l.application||'').trim() || null, coats: l.coats||1 }));
+      const { data: newLayers, error: layerErr } = await sb.from('composite_layers').insert(layerRows).select();
+      if(layerErr) { errors.push(`试片「${rec.name||'未命名'}」图层保存失败：${layerErr.message}`); }
+      else compositeLayers.push(...(newLayers||[]).map(rowToCompositeLayer));
     }
     savedGroupIds.push(g.id);
   }
@@ -4423,7 +4483,7 @@ function nbCardHtml(rec, ni, idPrefix) {
     if(!layers.length) return '';
     return `<div class="nb-layer-stack">${layers.map((l,i)=>{
       const g = compositeGlazes.find(cg=>cg.id===l.glazeId);
-      return `${i>0?'<span class="nb-layer-arrow">›</span>':''}<span class="nb-layer-chip">${g?g.name:'？'}${l.application?` <span style="opacity:0.6">(${l.application})</span>`:''}</span>`;
+      return `${i>0?'<span class="nb-layer-arrow">›</span>':''}<span class="nb-layer-chip">${g?g.name:'？'}${(l.coats||1)>1?` ×${l.coats}遍`:''}${l.application?` <span style="opacity:0.6">(${l.application})</span>`:''}</span>`;
     }).join('')}</div>`;
   })() : '';
   const compositeMetaHtml = isComposite ? [
@@ -4457,7 +4517,7 @@ function nbCardHtml(rec, ni, idPrefix) {
           ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
           <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
           ${isCollected ? `<span class="nb-collected-badge" title="采集试片">采</span>` : ''}
-          ${isComposite ? `<span class="nb-composite-badge" title="复合釉试片">叠</span>` : ''}
+          ${isComposite ? `<span class="nb-composite-badge-icon" title="复合釉试片"><svg width="18" height="18" viewBox="0 0 34 34" aria-label="复合釉"><rect x="7" y="9" width="20" height="3.4" rx="1.7" fill="var(--accent)"/><rect x="7" y="15.5" width="20" height="2.4" rx="1.2" fill="var(--accent)" opacity="0.72"/><rect x="7" y="21" width="20" height="1.6" rx="0.8" fill="var(--accent)" opacity="0.48"/></svg><span class="nb-composite-badge-count">${layersForEntry(rec.id).length}层</span></span>` : ''}
           ${rec.status==='planned' ? `<span class="nb-planned-badge" title="待试：还没烧">待</span>` : ''}
           ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
           <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${displayName}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
