@@ -1481,6 +1481,34 @@
   </div>
 </div>
 
+<!-- recipe reproduction calculator: read-only, scales a saved recipe to a target weight -->
+<div class="nbmodal-overlay" id="recipecalc-modal" onclick="closeRecipeCalcModal(event)">
+  <div class="nbmodal" style="width:460px">
+    <h3 id="recipecalc-title">按此配料</h3>
+    <div class="nbmodal-btns" style="margin-top:0">
+      <button class="nbmodal-confirm" id="recipecalc-mode-dry-btn" onclick="setRecipeCalcMode('dry')">按目标干料重量</button>
+      <button class="nbmodal-cancel" id="recipecalc-mode-wet-btn" onclick="setRecipeCalcMode('wet')">按釉浆总重</button>
+    </div>
+    <div id="recipecalc-mode-dry">
+      <div class="field-label">目标干料总重 (g)</div>
+      <input type="number" id="recipecalc-dry-target" min="0" step="1" placeholder="如 200" oninput="renderRecipeCalcResult()">
+    </div>
+    <div id="recipecalc-mode-wet" style="display:none">
+      <div class="field-label">釉浆总重 (g)</div>
+      <input type="number" id="recipecalc-wet-target" min="0" step="1" placeholder="如 300" oninput="renderRecipeCalcResult()">
+      <div class="field-label">干料浓度 (%)</div>
+      <input type="number" id="recipecalc-wet-ratio" min="0" max="100" step="0.1" oninput="renderRecipeCalcResult()">
+      <div class="import-hint" style="margin-top:4px">默认按此配方原始浓度预填（干料 ÷ (干料+水)）。若这次调得更稀或更稠，请改这个百分比——釉浆总重本身看不出水占多少，必须知道浓度才能倒算干料量。</div>
+    </div>
+    <div id="recipecalc-result" style="margin-top:14px"></div>
+    <div class="nbmodal-btns">
+      <button class="nbmodal-cancel" onclick="copyRecipeCalcResult()">复制结果</button>
+      <button class="nbmodal-confirm" onclick="closeRecipeCalcModal()">关闭</button>
+    </div>
+    <div id="recipecalc-copy-status" style="margin-top:8px;font-size:0.72rem;color:var(--ink3);text-align:center;min-height:1.2em"></div>
+  </div>
+</div>
+
 <!-- new-record type chooser -->
 <div class="nbmodal-overlay" id="nb-type-modal" onclick="closeNbTypeChooser(event)">
   <div class="nbmodal" style="width:340px">
@@ -4645,6 +4673,7 @@ function nbCardHtml(rec, ni, idPrefix) {
           <button class="nb-load-btn" onclick="${isComposite ? `openCompositeModalEdit(${ni})` : `openNbModalEdit(${ni})`}">编辑</button>
           <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
           ${!isComposite ? `<button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>` : ''}
+          ${(rec.baseIngredients||[]).some(i=>i.parts>0) ? `<button class="nb-load-btn" onclick="openRecipeCalcModal(${ni})">按此配料</button>` : ''}
           <button class="nb-load-btn" onclick="openFolderPicker('single', ['${rec.id}'])">移动到…</button>
           <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
         </div>
@@ -4677,6 +4706,99 @@ function nbCardHtml(rec, ni, idPrefix) {
       </div>
     </div>
   `;
+}
+
+// ── 复现计算器 / 配料助手：只读，把已存配方按目标量反算称量克数 ──
+// 添加剂% 与 calculate() / renderChemPanel 用同一口径：pct 相对干料重量（baseDry），
+// 见 calculate() 中 `amt / s.baseDry * 100` 的定义，这里原样复用，不引入第二套换算。
+let recipeCalcRecord = null;
+let recipeCalcMode = 'dry'; // 'dry' | 'wet'
+
+function openRecipeCalcModal(ni) {
+  const rec = notebook[ni];
+  if(!rec) return;
+  recipeCalcRecord = rec;
+  document.getElementById('recipecalc-title').textContent = `按此配料 · ${rec.name || '未命名'}`;
+  document.getElementById('recipecalc-dry-target').value = '';
+  document.getElementById('recipecalc-wet-target').value = '';
+  const totalWet = (rec.baseDry||0) + (rec.baseWater||0);
+  document.getElementById('recipecalc-wet-ratio').value = totalWet > 0 ? +(rec.baseDry / totalWet * 100).toFixed(2) : '';
+  document.getElementById('recipecalc-copy-status').textContent = '';
+  setRecipeCalcMode('dry');
+  document.getElementById('recipecalc-modal').classList.add('open');
+}
+function closeRecipeCalcModal(e) {
+  if(!e || e.target===document.getElementById('recipecalc-modal')) {
+    document.getElementById('recipecalc-modal').classList.remove('open');
+    recipeCalcRecord = null;
+  }
+}
+function setRecipeCalcMode(mode) {
+  recipeCalcMode = mode;
+  document.getElementById('recipecalc-mode-dry').style.display = mode==='dry' ? '' : 'none';
+  document.getElementById('recipecalc-mode-wet').style.display = mode==='wet' ? '' : 'none';
+  document.getElementById('recipecalc-mode-dry-btn').className = mode==='dry' ? 'nbmodal-confirm' : 'nbmodal-cancel';
+  document.getElementById('recipecalc-mode-wet-btn').className = mode==='wet' ? 'nbmodal-confirm' : 'nbmodal-cancel';
+  renderRecipeCalcResult();
+}
+// 纯函数：给定配方和目标量，算出干料总重 + 每样原料/添加剂的克数。不读不写 DOM、不碰数据库。
+function computeRecipeCalc(rec, mode, targetDry, wetTotal, dryPct) {
+  const base = (rec.baseIngredients||[]).filter(i => i.parts > 0);
+  const totalParts = base.reduce((s,i)=>s+i.parts, 0);
+  if(!totalParts) return { ok:false, error:'这条记录没有基础原料份数，无法反算' };
+  let dryTotal;
+  if(mode === 'dry') {
+    dryTotal = targetDry;
+  } else {
+    if(!(dryPct > 0)) return { ok:false, error:'请填写干料浓度' };
+    dryTotal = wetTotal * dryPct / 100;
+  }
+  if(!(dryTotal > 0)) return { ok:false, error:'' };
+  const baseRows = base.map(i => ({ name:i.name, parts:i.parts, grams: dryTotal * i.parts / totalParts }));
+  const addRows = Object.entries(rec.additives||{}).map(([name,pct]) => ({ name, pct, grams: dryTotal * pct / 100 }));
+  return { ok:true, dryTotal, baseRows, addRows };
+}
+function readRecipeCalcInputs() {
+  return {
+    targetDry: parseFloat(document.getElementById('recipecalc-dry-target').value) || 0,
+    wetTotal: parseFloat(document.getElementById('recipecalc-wet-target').value) || 0,
+    dryPct: parseFloat(document.getElementById('recipecalc-wet-ratio').value) || 0,
+  };
+}
+function renderRecipeCalcResult() {
+  const rec = recipeCalcRecord;
+  const wrap = document.getElementById('recipecalc-result');
+  if(!rec) { wrap.innerHTML = ''; return; }
+  const { targetDry, wetTotal, dryPct } = readRecipeCalcInputs();
+  const r = computeRecipeCalc(rec, recipeCalcMode, targetDry, wetTotal, dryPct);
+  if(!r.ok) { wrap.innerHTML = r.error ? `<div class="error-msg">${r.error}</div>` : ''; return; }
+  const baseRowsHtml = r.baseRows.map(row => `<tr><td>${row.name}</td><td>${row.parts}</td><td>${row.grams.toFixed(1)}g</td></tr>`).join('');
+  const addRowsHtml = r.addRows.map(row => `<tr><td>${row.name}<span class="tag-add">外加</span></td><td>${(+row.pct).toFixed(3)}%</td><td class="pct-highlight">${row.grams.toFixed(2)}g</td></tr>`).join('');
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>原料</th><th>份数/外加%</th><th>克数</th></tr></thead>
+      <tbody>${baseRowsHtml}${addRowsHtml}</tbody>
+    </table>
+    <div class="import-hint" style="margin-top:6px">干料总重 ${r.dryTotal.toFixed(1)}g</div>
+  `;
+}
+function copyRecipeCalcResult() {
+  const rec = recipeCalcRecord;
+  const status = document.getElementById('recipecalc-copy-status');
+  if(!rec) return;
+  const { targetDry, wetTotal, dryPct } = readRecipeCalcInputs();
+  const r = computeRecipeCalc(rec, recipeCalcMode, targetDry, wetTotal, dryPct);
+  if(!r.ok) { status.textContent = r.error || '请先输入目标量'; return; }
+  const lines = [`${rec.name || '未命名'} · 按此配料`, `干料总重 ${r.dryTotal.toFixed(1)}g`, ''];
+  r.baseRows.forEach(row => lines.push(`${row.name}　${row.grams.toFixed(1)}g`));
+  if(r.addRows.length) {
+    lines.push('');
+    r.addRows.forEach(row => lines.push(`${row.name}（外加${(+row.pct).toFixed(3)}%）　${row.grams.toFixed(2)}g`));
+  }
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    status.textContent = '已复制';
+    setTimeout(() => { if(status.textContent==='已复制') status.textContent=''; }, 1500);
+  }).catch(() => { status.textContent = '复制失败，请手动选中文字复制'; });
 }
 
 // ── 收藏 (starred) tab: same card component as the notebook tab, filtered to starred===true ──
