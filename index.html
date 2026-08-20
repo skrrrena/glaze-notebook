@@ -535,6 +535,13 @@
     color: var(--accent); border: 1px solid var(--accent); border-radius: 3px;
     padding: 1px 5px; flex-shrink: 0;
   }
+  /* 导入的配方: 别人分享给自己的配方快照，用点线边框和"导"角标区分，不进 Seger 校准 */
+  .nb-card-imported { border-style: dotted; }
+  .nb-imported-badge {
+    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
+    color: var(--ink3); border: 1px dotted var(--line); border-radius: 3px;
+    padding: 1px 5px; flex-shrink: 0;
+  }
   /* §B 复合釉试片: 叠成品釉，无配方成分可算，用双线边框和"叠"角标区分 */
   .nb-card-composite { border-style: double; border-width: 4px; }
   .nb-composite-badge-icon {
@@ -1509,6 +1516,73 @@
   </div>
 </div>
 
+<!-- recipe share: builds a self-contained #import= link. Never touches account tokens/ids —
+     only the recipe fields the sharer opts into go into the payload. -->
+<div class="nbmodal-overlay" id="recipeshare-modal" onclick="closeRecipeShareModal(event)">
+  <div class="nbmodal" style="width:460px">
+    <h3>分享配方</h3>
+    <div id="recipeshare-config">
+      <div class="field-label">对外名称</div>
+      <input type="text" id="recipeshare-name" placeholder="给对方看的名字，不影响你自己的记录">
+      <div id="recipeshare-firing-row" style="margin-top:12px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer">
+          <input type="checkbox" id="recipeshare-firing-check">
+          <span id="recipeshare-firing-label">带上烧成曲线</span>
+        </label>
+      </div>
+      <div id="recipeshare-tags-row" style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer">
+          <input type="checkbox" id="recipeshare-tags-check">
+          <span>带上效果标签</span>
+        </label>
+      </div>
+      <div style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;cursor:pointer">
+          <input type="checkbox" id="recipeshare-note-check" onchange="toggleRecipeShareNoteRow()">
+          <span>带上心得（对外文字，不是你的私人备注）</span>
+        </label>
+      </div>
+      <div id="recipeshare-note-row" style="display:none;margin-top:6px">
+        <textarea id="recipeshare-note-text" placeholder="写给对方看的心得，和你自己的备注是两回事" style="width:100%;min-height:70px"></textarea>
+      </div>
+      <div id="recipeshare-status" style="margin-top:10px;font-size:0.78rem;color:var(--ink3);min-height:1.2em"></div>
+      <div class="nbmodal-btns">
+        <button class="nbmodal-cancel" onclick="closeRecipeShareModal()">取消</button>
+        <button class="nbmodal-confirm" onclick="generateRecipeShareLink()">生成链接</button>
+      </div>
+    </div>
+    <div id="recipeshare-result" style="display:none">
+      <div class="field-label">分享链接</div>
+      <input type="text" id="recipeshare-link" readonly onclick="this.select()">
+      <div class="import-hint" style="margin-top:8px;color:var(--danger)">
+        此链接包含配方的完整快照。发送后无法撤回——对方将永久拥有这份配方。链接不含你的账号信息，可安全分享。
+      </div>
+      <div id="recipeshare-copy-status" style="margin-top:6px;font-size:0.72rem;color:var(--ink3);text-align:center;min-height:1.2em"></div>
+      <div class="nbmodal-btns">
+        <button class="nbmodal-cancel" onclick="backToRecipeShareConfig()">返回修改</button>
+        <button class="nbmodal-confirm" onclick="copyRecipeShareLink()">复制链接</button>
+      </div>
+      <div class="nbmodal-btns" style="margin-top:6px">
+        <button class="nbmodal-cancel" style="flex:none;width:100%" onclick="closeRecipeShareModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- recipe import preview: read-only until "确认导入" — nothing is written to the DB before that -->
+<div class="nbmodal-overlay" id="recipeimport-modal" onclick="closeRecipeImportModal(event)">
+  <div class="nbmodal" style="width:460px">
+    <h3 id="recipeimport-title">导入配方</h3>
+    <div class="import-hint">这是别人分享给你的配方快照，确认后会作为新记录存入你自己的配方本，不会影响对方的原记录。</div>
+    <div id="recipeimport-body" style="margin-top:10px"></div>
+    <div id="recipeimport-status" style="margin-top:10px;font-size:0.78rem;color:var(--ink3);min-height:1.2em"></div>
+    <div class="nbmodal-btns">
+      <button class="nbmodal-cancel" onclick="closeRecipeImportModal()">取消</button>
+      <button class="nbmodal-confirm" onclick="confirmRecipeImport()">确认导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- new-record type chooser -->
 <div class="nbmodal-overlay" id="nb-type-modal" onclick="closeNbTypeChooser(event)">
   <div class="nbmodal" style="width:340px">
@@ -2130,6 +2204,7 @@ async function boot() {
   renderMaterials();
   renderFiringCurves();
   renderCalibration();
+  checkForImportLink();
 }
 
 // ── photo storage (Supabase Storage) ──
@@ -3085,7 +3160,7 @@ function statRange(nums) {
 }
 function calibReliableGroup(curveId) {
   return notebook
-    .filter(r => r.firingCurveId === curveId && r.dataConfidence === '可靠' && r.entryType !== 'collected' && r.entryType !== 'composite_test')
+    .filter(r => r.firingCurveId === curveId && r.dataConfidence === '可靠' && r.entryType !== 'collected' && r.entryType !== 'composite_test' && r.entryType !== 'imported')
     .map(rec => ({ rec, seger: computeSegerFormula(rec.baseIngredients, rec.additives) }))
     .filter(x => x.seger.ok);
 }
@@ -4605,6 +4680,8 @@ function closeNbTagPanel(e) {
 function nbCardHtml(rec, ni, idPrefix) {
   const isCollected = rec.entryType === 'collected';
   const isComposite = rec.entryType === 'composite_test';
+  const isImported = rec.entryType === 'imported';
+  const hasBase = (rec.baseIngredients||[]).some(i=>i.parts>0);
   const si = rec.sourceInfo || {};
   const baseTags = (rec.baseIngredients||[]).map(i=>
     `<span class="nb-ingredient-tag">${i.name} ${i.parts}</span>`
@@ -4648,12 +4725,13 @@ function nbCardHtml(rec, ni, idPrefix) {
   const showBatchUi = idPrefix === 'nb' && nbBatchMode;
 
   return `
-    <div class="nb-card ${isCollected ? 'nb-card-collected' : ''} ${isComposite ? 'nb-card-composite' : ''} ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
+    <div class="nb-card ${isCollected ? 'nb-card-collected' : ''} ${isComposite ? 'nb-card-composite' : ''} ${isImported ? 'nb-card-imported' : ''} ${showBatchUi && nbSelectedIds.has(rec.id) ? 'nb-card-selected' : ''}" id="${idPrefix}-card-${ni}">
       <div class="nb-card-head">
         <div class="nb-head-row1">
           ${showBatchUi ? `<input type="checkbox" class="card-check" ${nbSelectedIds.has(rec.id)?'checked':''} onchange="toggleNbSelect('${rec.id}', this.checked)">` : ''}
           <button class="nb-star-btn ${rec.starred?'nb-star-btn-on':''}" onclick="toggleNbStar(${ni})" title="${rec.starred?'取消星标':'标为好釉'}">${rec.starred?'★':'☆'}</button>
           ${isCollected ? `<span class="nb-collected-badge" title="采集试片">采</span>` : ''}
+          ${isImported ? `<span class="nb-imported-badge" title="导入的配方，来自别人分享">导</span>` : ''}
           ${isComposite ? `<span class="nb-composite-badge-icon" title="复合釉试片"><svg width="18" height="18" viewBox="0 0 34 34" aria-label="复合釉"><rect x="7" y="9" width="20" height="3.4" rx="1.7" fill="var(--accent)"/><rect x="7" y="15.5" width="20" height="2.4" rx="1.2" fill="var(--accent)" opacity="0.72"/><rect x="7" y="21" width="20" height="1.6" rx="0.8" fill="var(--accent)" opacity="0.48"/></svg><span class="nb-composite-badge-count">${layersForEntry(rec.id).length}层</span></span>` : ''}
           ${rec.status==='planned' ? `<span class="nb-planned-badge" title="待试：还没烧">待</span>` : ''}
           ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
@@ -4672,8 +4750,9 @@ function nbCardHtml(rec, ni, idPrefix) {
           ${rec.status==='planned' ? `<button class="nb-load-btn" onclick="markNbDone(${ni})">标记为已烧</button>` : ''}
           <button class="nb-load-btn" onclick="${isComposite ? `openCompositeModalEdit(${ni})` : `openNbModalEdit(${ni})`}">编辑</button>
           <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
+          ${hasBase ? `<button class="nb-load-btn" onclick="openRecipeShareModal(${ni})">分享配方</button>` : ''}
           ${!isComposite ? `<button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>` : ''}
-          ${(rec.baseIngredients||[]).some(i=>i.parts>0) ? `<button class="nb-load-btn" onclick="openRecipeCalcModal(${ni})">按此配料</button>` : ''}
+          ${hasBase ? `<button class="nb-load-btn" onclick="openRecipeCalcModal(${ni})">按此配料</button>` : ''}
           <button class="nb-load-btn" onclick="openFolderPicker('single', ['${rec.id}'])">移动到…</button>
           <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
         </div>
@@ -4799,6 +4878,268 @@ function copyRecipeCalcResult() {
     status.textContent = '已复制';
     setTimeout(() => { if(status.textContent==='已复制') status.textContent=''; }, 1500);
   }).catch(() => { status.textContent = '复制失败，请手动选中文字复制'; });
+}
+
+// ── 配方分享 / 跨账号导入 ──
+// 安全铁律：分享链接（#import=...）里只装配方数据本身，绝不装 access_token / user_id /
+// 任何能读写 A 账号的凭证。链接是自包含的静态快照，和分享人的账号完全解耦；B 导入时
+// 数据存进 B 自己的账号（B 的 auth.uid()），走 B 的正常 RLS，新生成 id，不会复用 A 的 id。
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// gzip via the native Streams API when available（不引入任何外部压缩库）；
+// 老浏览器没有 CompressionStream 时退化为不压缩，链接仅会更长，功能不受影响。
+const RECIPE_SHARE_HAS_COMPRESSION = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+async function encodeShareData(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let payloadBytes = bytes, flag = 'r';
+  if(RECIPE_SHARE_HAS_COMPRESSION) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+    payloadBytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    flag = 'g';
+  }
+  let binary = '';
+  payloadBytes.forEach(b => binary += String.fromCharCode(b));
+  return flag + btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+async function decodeShareData(str) {
+  const flag = str[0];
+  const binary = atob(str.slice(1).replace(/-/g,'+').replace(/_/g,'/'));
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+  let jsonBytes = bytes;
+  if(flag === 'g') {
+    if(!RECIPE_SHARE_HAS_COMPRESSION) throw new Error('这个浏览器不支持解压缩，换个新一点的浏览器试试');
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    jsonBytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  return JSON.parse(new TextDecoder().decode(jsonBytes));
+}
+
+// -- 分享方 --
+let recipeShareRecord = null;
+function openRecipeShareModal(ni) {
+  const rec = notebook[ni];
+  if(!rec) return;
+  recipeShareRecord = rec;
+  document.getElementById('recipeshare-name').value = rec.name || '';
+  const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
+  document.getElementById('recipeshare-firing-check').checked = false;
+  document.getElementById('recipeshare-firing-row').style.display = fc ? '' : 'none';
+  if(fc) document.getElementById('recipeshare-firing-label').textContent = `带上烧成曲线（${fc.name}）`;
+  document.getElementById('recipeshare-tags-check').checked = false;
+  document.getElementById('recipeshare-tags-row').style.display = (rec.effectTags||[]).length ? '' : 'none';
+  document.getElementById('recipeshare-note-check').checked = false;
+  document.getElementById('recipeshare-note-text').value = '';
+  document.getElementById('recipeshare-note-row').style.display = 'none';
+  document.getElementById('recipeshare-status').textContent = '';
+  document.getElementById('recipeshare-config').style.display = '';
+  document.getElementById('recipeshare-result').style.display = 'none';
+  document.getElementById('recipeshare-modal').classList.add('open');
+}
+function closeRecipeShareModal(e) {
+  if(!e || e.target===document.getElementById('recipeshare-modal')) {
+    document.getElementById('recipeshare-modal').classList.remove('open');
+    recipeShareRecord = null;
+  }
+}
+function toggleRecipeShareNoteRow() {
+  document.getElementById('recipeshare-note-row').style.display =
+    document.getElementById('recipeshare-note-check').checked ? '' : 'none';
+}
+function backToRecipeShareConfig() {
+  document.getElementById('recipeshare-config').style.display = '';
+  document.getElementById('recipeshare-result').style.display = 'none';
+}
+async function generateRecipeShareLink() {
+  const rec = recipeShareRecord;
+  const status = document.getElementById('recipeshare-status');
+  if(!rec) return;
+  const base = (rec.baseIngredients||[]).filter(i=>i.parts>0);
+  if(!base.length) { status.textContent = '这条记录没有基础原料，无法分享'; return; }
+  const name = document.getElementById('recipeshare-name').value.trim() || rec.name || '未命名配方';
+  // 分享内容只装配方本身：基釉+添加剂必带；烧成曲线/心得/标签按分享人这次的勾选决定，
+  // 心得用分享人现填的对外文本，绝不直接带走私人 note；不带照片、num、folder、starred 等私有信息。
+  const payload = {
+    v: 1,
+    name,
+    baseIngredients: base.map(i=>({name:i.name, parts:i.parts})),
+    baseDry: rec.baseDry||0, baseWater: rec.baseWater||0,
+    additives: {...(rec.additives||{})},
+  };
+  if(document.getElementById('recipeshare-firing-check').checked) {
+    const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
+    if(fc) payload.firingCurve = {
+      name: fc.name, note: fc.note||'', segments: fc.segments||[],
+      startTemp: fc.startTemp, totalMinutes: fc.totalMinutes, peakTemp: fc.peakTemp, atmosphere: fc.atmosphere,
+    };
+  }
+  if(document.getElementById('recipeshare-note-check').checked) {
+    const noteText = document.getElementById('recipeshare-note-text').value.trim();
+    if(noteText) payload.note = noteText;
+  }
+  if(document.getElementById('recipeshare-tags-check').checked && (rec.effectTags||[]).length) {
+    payload.effectTags = [...rec.effectTags];
+  }
+  status.textContent = '生成中…';
+  try {
+    const encoded = await encodeShareData(payload);
+    const url = window.location.origin + window.location.pathname + '#import=' + encoded;
+    document.getElementById('recipeshare-link').value = url;
+    status.textContent = url.length > 4000 ? '链接较长（内容较多），发送前建议先测试对方能否正常打开' : '';
+    document.getElementById('recipeshare-config').style.display = 'none';
+    document.getElementById('recipeshare-result').style.display = '';
+    document.getElementById('recipeshare-copy-status').textContent = '';
+  } catch(e) {
+    status.textContent = '生成失败：' + e.message;
+  }
+}
+function copyRecipeShareLink() {
+  const input = document.getElementById('recipeshare-link');
+  const status = document.getElementById('recipeshare-copy-status');
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => {
+    status.textContent = '已复制';
+    setTimeout(() => { if(status.textContent==='已复制') status.textContent=''; }, 1500);
+  }).catch(() => { status.textContent = '复制失败，请手动选中文字复制'; });
+}
+
+// -- 接收方：解码防御。#import= 的内容来自外部链接，不可信任，所有字段做类型/范围校验，
+// 通过前绝不写库。校验失败一律友好报错，不崩、不半写。 --
+function validateShareData(data) {
+  if(!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  if(data.v !== 1) return false;
+  if(typeof data.name !== 'string' || !data.name.trim() || data.name.length > 200) return false;
+  if(!Array.isArray(data.baseIngredients) || !data.baseIngredients.length || data.baseIngredients.length > 100) return false;
+  for(const i of data.baseIngredients) {
+    if(!i || typeof i !== 'object') return false;
+    if(typeof i.name !== 'string' || !i.name.trim() || i.name.length > 100) return false;
+    if(typeof i.parts !== 'number' || !isFinite(i.parts) || i.parts <= 0) return false;
+  }
+  if(typeof data.additives !== 'object' || data.additives === null || Array.isArray(data.additives)) return false;
+  const addNames = Object.keys(data.additives);
+  if(addNames.length > 100) return false;
+  for(const [k,v] of Object.entries(data.additives)) {
+    if(!k.trim() || k.length > 100) return false;
+    if(typeof v !== 'number' || !isFinite(v) || v < 0) return false;
+  }
+  if(data.baseDry !== undefined && (typeof data.baseDry !== 'number' || !isFinite(data.baseDry) || data.baseDry < 0)) return false;
+  if(data.baseWater !== undefined && (typeof data.baseWater !== 'number' || !isFinite(data.baseWater) || data.baseWater < 0)) return false;
+  if(data.note !== undefined && (typeof data.note !== 'string' || data.note.length > 5000)) return false;
+  if(data.effectTags !== undefined) {
+    if(!Array.isArray(data.effectTags) || data.effectTags.length > 50) return false;
+    if(data.effectTags.some(t => typeof t !== 'string' || t.length > 50)) return false;
+  }
+  if(data.firingCurve !== undefined) {
+    const fc = data.firingCurve;
+    if(!fc || typeof fc !== 'object' || Array.isArray(fc)) return false;
+    if(typeof fc.name !== 'string' || !fc.name.trim() || fc.name.length > 100) return false;
+    if(!Array.isArray(fc.segments) || fc.segments.length > 200) return false;
+    for(const seg of fc.segments) {
+      if(!seg || typeof seg !== 'object') return false;
+      if(typeof seg.minutes !== 'number' || !isFinite(seg.minutes)) return false;
+      if(typeof seg.targetTemp !== 'number' || !isFinite(seg.targetTemp)) return false;
+    }
+  }
+  return true;
+}
+
+let recipeImportData = null;
+function openRecipeImportPreview(data) {
+  recipeImportData = data;
+  document.getElementById('recipeimport-title').textContent = escapeHtml(data.name);
+  const baseRows = data.baseIngredients.map(i =>
+    `<tr><td>${escapeHtml(i.name)}</td><td>${i.parts}</td><td>—</td></tr>`).join('');
+  const addRows = Object.entries(data.additives).map(([name,pct]) =>
+    `<tr><td>${escapeHtml(name)}<span class="tag-add">外加</span></td><td>—</td><td class="pct-highlight">${(+pct).toFixed(3)}%</td></tr>`).join('');
+  const parts = [];
+  parts.push(`<table><thead><tr><th>原料</th><th>份数</th><th>添加剂外加%</th></tr></thead><tbody>${baseRows}${addRows}</tbody></table>`);
+  if(data.firingCurve) {
+    const fc = data.firingCurve;
+    parts.push(`<div class="nb-section-label">烧成曲线</div><div class="nb-row"><span class="nb-ingredient-tag">${escapeHtml(fc.name)}${fc.peakTemp?` · 峰值 ${fc.peakTemp}℃`:''}${fc.atmosphere?` · ${escapeHtml(fc.atmosphere)}`:''}</span></div>`);
+  }
+  if(data.effectTags && data.effectTags.length) {
+    parts.push(`<div class="nb-section-label">效果标签</div><div class="nb-row">${data.effectTags.map(t=>`<span class="nb-effect-tag">◇ ${escapeHtml(t)}</span>`).join('')}</div>`);
+  }
+  if(data.note) {
+    parts.push(`<div class="nb-section-label">心得</div><div class="nb-note" style="white-space:pre-wrap">${escapeHtml(data.note)}</div>`);
+  }
+  document.getElementById('recipeimport-body').innerHTML = parts.join('');
+  document.getElementById('recipeimport-status').textContent = '';
+  document.getElementById('recipeimport-modal').classList.add('open');
+}
+function closeRecipeImportModal(e) {
+  if(!e || e.target===document.getElementById('recipeimport-modal')) {
+    document.getElementById('recipeimport-modal').classList.remove('open');
+    recipeImportData = null;
+  }
+}
+async function confirmRecipeImport() {
+  const data = recipeImportData;
+  if(!data) return;
+  const status = document.getElementById('recipeimport-status');
+  status.textContent = '导入中…';
+  let firingCurveId = null;
+  if(data.firingCurve) {
+    const fc = data.firingCurve;
+    const existing = firingCurves.find(c => c.name === fc.name);
+    if(existing) {
+      firingCurveId = existing.id;
+    } else {
+      const { data: fcRow, error: fcErr } = await sb.from('firing_curves').insert({
+        name: fc.name, note: fc.note||'', segments: fc.segments||[],
+        start_temp: fc.startTemp ?? 30, total_minutes: fc.totalMinutes ?? null,
+        peak_temp: fc.peakTemp ?? null, atmosphere: fc.atmosphere || '氧化',
+      }).select().single();
+      // 曲线建库失败（如撞名）不阻断配方导入，只是这条记录暂不关联曲线
+      if(!fcErr && fcRow) {
+        const newFc = rowToFiringCurve(fcRow);
+        firingCurves.push(newFc);
+        firingCurveId = newFc.id;
+      }
+    }
+  }
+  const payload = {
+    name: data.name,
+    note: data.note || '',
+    base_ingredients: data.baseIngredients.map(i=>({name:i.name, parts:i.parts})),
+    base_dry: data.baseDry || 0,
+    base_water: data.baseWater || 0,
+    glazes: [],
+    additives: {...data.additives},
+    effect_tags: data.effectTags || [],
+    entry_type: 'imported',
+    firing_curve_id: firingCurveId,
+    folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
+  };
+  const { data: row, error } = await sb.from('notebook_entries').insert(payload).select().single();
+  if(error) { status.textContent = '导入失败：' + error.message; return; }
+  notebook.unshift(rowToNotebook(row));
+  updateNbBadge();
+  renderNbAndFav();
+  closeRecipeImportModal();
+  alert('导入成功，已存入你的配方本');
+}
+// boot() 之后检查地址栏 fragment 里有没有待导入的分享链接；fragment 从不发给服务器，
+// 解析失败一律友好报错、绝不崩溃；一旦解析出结果就立刻清掉 fragment，避免刷新页面重复弹出。
+async function checkForImportLink() {
+  const hash = window.location.hash;
+  if(!hash.startsWith('#import=')) return;
+  const encoded = hash.slice('#import='.length);
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  let data;
+  try {
+    data = await decodeShareData(encoded);
+  } catch(e) {
+    alert('无法解析这个导入链接，可能已损坏或来自不兼容的版本。');
+    return;
+  }
+  if(!validateShareData(data)) {
+    alert('这个导入链接的内容格式不正确，可能已损坏。');
+    return;
+  }
+  openRecipeImportPreview(data);
 }
 
 // ── 收藏 (starred) tab: same card component as the notebook tab, filtered to starred===true ──
