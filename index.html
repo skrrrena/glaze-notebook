@@ -673,6 +673,9 @@
   .nb-layer-edit-row { display: grid; grid-template-columns: 20px 1fr 90px 46px 24px 24px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
   .nb-layer-order-num { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink3); text-align: center; }
   .nb-layer-coats-input { width: 100%; text-align: center; }
+  .fc-seg-edit-row { display: grid; grid-template-columns: 18px 66px 62px 54px 60px 1fr 24px 24px 28px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .fc-seg-edit-row input, .fc-seg-edit-row select { font-size: 0.74rem; }
+  .fc-seg-edit-row input[type=number] { text-align: center; }
   .glazelib-row { display: grid; grid-template-columns: 1fr 80px 28px; gap: 6px; margin-bottom: 6px; align-items: center; font-size: 0.8rem; }
 
   /* share card modal */
@@ -1431,6 +1434,9 @@
   <div class="fav-panel">
     <div class="fav-toolbar">
       <span class="import-hint">共用窑固定曲线，从这里查看/编辑；记录在「配方本」里关联对应曲线。</span>
+      <div class="fav-toolbar-right">
+        <button class="nb-new-btn" onclick="openFcEditModal()">＋ 新建曲线</button>
+      </div>
     </div>
     <div id="fc-list"></div>
   </div>
@@ -1655,6 +1661,45 @@
     <button class="nbmodal-confirm" style="margin-top:8px" onclick="glazeLibraryAdd()">＋ 添加</button>
     <div class="nbmodal-btns">
       <button class="nbmodal-cancel" style="flex:none;width:100%" onclick="closeGlazeLibraryModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- firing curve editor: 分段式录入 + 实时预览，复用 renderFiringCurveChart/computeCurvePoints，
+     不引入另一套曲线模型。速率/时长二选一填、自动换算另一个。 -->
+<div class="nbmodal-overlay" id="fc-edit-modal" onclick="closeFcEditModal(event)">
+  <div class="nbmodal" style="width:560px">
+    <h3 id="fc-edit-title">新建烧成曲线</h3>
+    <div class="chem-warning" id="fc-edit-seed-warning" style="display:none;margin-bottom:10px">⚠ 这是共用的种子曲线，可能被多条历史记录用于分组标记，修改前请确认不会影响既有记录的分组含义。</div>
+
+    <div class="field-label">曲线名称</div>
+    <input type="text" id="fc-edit-name" placeholder="如：结晶曲线 B" maxlength="60">
+
+    <div class="nbmodal-row">
+      <span style="font-size:0.72rem;color:var(--ink3);align-self:center">起始温度℃</span>
+      <input type="number" id="fc-edit-starttemp" value="30" oninput="renderFcEditPreview()">
+    </div>
+
+    <div class="field-label" style="margin-top:14px">分段（升温 / 保温 / 降温，按顺序）</div>
+    <div id="fc-edit-segments-wrap"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+      <button class="btn-ghost" style="width:auto;padding:5px 10px" onclick="fcAddSegment()">＋ 添加分段</button>
+      <button class="btn-ghost" style="width:auto;padding:5px 10px" onclick="fcInsertTemplate('peak-hold')">＋ 峰值保温</button>
+      <button class="btn-ghost" style="width:auto;padding:5px 10px" onclick="fcInsertTemplate('crash')">＋ 急冷</button>
+      <button class="btn-ghost" style="width:auto;padding:5px 10px" onclick="fcInsertTemplate('crystal-hold')">＋ 结晶保温</button>
+    </div>
+
+    <div id="fc-edit-warnings" style="margin-top:8px"></div>
+    <div class="field-label" style="margin-top:10px" id="fc-edit-summary">添加分段后这里会显示总时长和峰值温度</div>
+    <div id="fc-edit-chart"></div>
+
+    <div class="field-label" style="margin-top:14px">备注</div>
+    <textarea id="fc-edit-note" placeholder="如：共用窑固定曲线，选填" oninput="autoGrowTextarea(this)" style="min-height:56px"></textarea>
+
+    <div id="fc-edit-status" style="margin-top:10px;font-size:0.78rem;color:var(--ink3);min-height:1.2em"></div>
+    <div class="nbmodal-btns">
+      <button class="nbmodal-cancel" onclick="closeFcEditModal()">取消</button>
+      <button class="nbmodal-confirm" onclick="saveFcEdit()">保存</button>
     </div>
   </div>
 </div>
@@ -3127,6 +3172,8 @@ function renderFiringCurves() {
       <div class="mat-row">
         <strong class="mat-name">${c.name}</strong>
         <span style="font-size:0.72rem;color:var(--ink3)">峰值 ${c.peakTemp ?? '—'}℃ · 全程 ${c.totalMinutes ?? '—'} min · ${c.atmosphere}</span>
+        <button class="btn-ghost" style="width:auto;margin:0 0 0 auto;padding:3px 10px" onclick="openFcEditModal('${c.id}')">编辑</button>
+        <button class="btn-icon" onclick="deleteFiringCurve('${c.id}')" title="删除">×</button>
       </div>
       ${renderFiringCurveChart(c)}
       <div class="mat-row">
@@ -3134,6 +3181,195 @@ function renderFiringCurves() {
         <input type="text" value="${c.note}" style="flex:1;font-size:0.75rem" onchange="updateFiringCurveField('${c.id}','note',this.value)">
       </div>
     </div>`).join('') || `<div class="empty-result" style="padding:20px 0"><div class="big">窑</div>暂无烧成曲线</div>`;
+}
+
+// ── 烧成曲线编辑器：分段式录入 + 实时预览，复用 computeCurvePoints/renderFiringCurveChart
+// 这套现成的渲染逻辑，不另建曲线模型。fcEditSegments 里每段多带一个 UI-only 的 driver
+// 字段（'minutes'|'rate'，标记这段当前是靠时长还是速率驱动换算），保存前会剥离掉。
+let fcEditId = null;
+let fcEditSegments = [];
+function fcSegPrevTemp(i) {
+  if(i === 0) return parseFloat(document.getElementById('fc-edit-starttemp')?.value) || 0;
+  return fcEditSegments[i-1].targetTemp ?? 0;
+}
+function fcRecalcRateFromMinutes(i) {
+  const seg = fcEditSegments[i];
+  const prev = fcSegPrevTemp(i);
+  seg.rate = seg.minutes > 0 ? +(((seg.targetTemp - prev) / seg.minutes).toFixed(2)) : 0;
+}
+function fcRecalcMinutesFromRate(i) {
+  const seg = fcEditSegments[i];
+  const prev = fcSegPrevTemp(i);
+  const delta = seg.targetTemp - prev;
+  if(seg.rate !== 0 && delta !== 0 && Math.sign(delta) === Math.sign(seg.rate)) {
+    seg.minutes = +(delta / seg.rate).toFixed(1);
+  }
+  // 速率方向和温度变化方向对不上（比如降温却填了正速率）时不硬算，
+  // 时长保持不动，交给 validateFcEdit 的温和提示去指出来
+}
+function fcSegUpdate(i, field, rawValue) {
+  const seg = fcEditSegments[i];
+  if(!seg) return;
+  if(field === 'type') {
+    seg.type = rawValue;
+    if(rawValue === 'hold') { seg.targetTemp = fcSegPrevTemp(i); seg.rate = 0; }
+  } else if(field === 'targetTemp') {
+    seg.targetTemp = parseFloat(rawValue) || 0;
+    if(seg.type !== 'hold') { seg.driver === 'rate' ? fcRecalcMinutesFromRate(i) : fcRecalcRateFromMinutes(i); }
+  } else if(field === 'minutes') {
+    seg.minutes = parseFloat(rawValue) || 0;
+    seg.driver = 'minutes';
+    if(seg.type !== 'hold') fcRecalcRateFromMinutes(i);
+  } else if(field === 'rate') {
+    seg.rate = parseFloat(rawValue) || 0;
+    seg.driver = 'rate';
+    if(seg.type !== 'hold') fcRecalcMinutesFromRate(i);
+  } else if(field === 'label') {
+    seg.label = rawValue;
+  }
+  renderFcEditSegments();
+}
+function fcAddSegment() {
+  const prev = fcEditSegments.length ? fcEditSegments[fcEditSegments.length-1].targetTemp : fcSegPrevTemp(0);
+  const target = prev + 50;
+  fcEditSegments.push({ minutes:30, targetTemp:target, rate:+((target-prev)/30).toFixed(2), type:'ramp', label:'', driver:'minutes' });
+  renderFcEditSegments();
+}
+function fcInsertTemplate(kind) {
+  const prev = fcEditSegments.length ? fcEditSegments[fcEditSegments.length-1].targetTemp : fcSegPrevTemp(0);
+  let seg;
+  if(kind === 'peak-hold') seg = { minutes:20, targetTemp:prev, rate:0, type:'hold', label:'峰值保温', driver:'minutes' };
+  else if(kind === 'crash') { const target = prev - 100; seg = { minutes:2, targetTemp:target, rate:+((target-prev)/2).toFixed(2), type:'crash', label:'急冷', driver:'minutes' }; }
+  else if(kind === 'crystal-hold') seg = { minutes:90, targetTemp:prev, rate:0, type:'hold', label:'结晶保温', driver:'minutes' };
+  else return;
+  fcEditSegments.push(seg);
+  renderFcEditSegments();
+}
+function fcRemoveSegment(i) { fcEditSegments.splice(i,1); renderFcEditSegments(); }
+function fcMoveSegment(i, dir) {
+  const j = i + dir;
+  if(j < 0 || j >= fcEditSegments.length) return;
+  [fcEditSegments[i], fcEditSegments[j]] = [fcEditSegments[j], fcEditSegments[i]];
+  renderFcEditSegments();
+}
+function renderFcEditSegments() {
+  const wrap = document.getElementById('fc-edit-segments-wrap');
+  if(!wrap) return;
+  wrap.innerHTML = fcEditSegments.map((seg,i) => {
+    const isHold = seg.type === 'hold';
+    return `
+    <div class="fc-seg-edit-row">
+      <span class="nb-layer-order-num">${i+1}</span>
+      <select onchange="fcSegUpdate(${i},'type',this.value)">
+        <option value="ramp" ${!isHold && seg.type!=='crash' ? 'selected':''}>渐变</option>
+        <option value="hold" ${isHold?'selected':''}>保温</option>
+        <option value="crash" ${seg.type==='crash'?'selected':''}>骤冷</option>
+      </select>
+      <input type="number" value="${seg.targetTemp}" title="目标温度℃" oninput="fcSegUpdate(${i},'targetTemp',this.value)">
+      <input type="number" value="${seg.minutes}" title="时长(min)" oninput="fcSegUpdate(${i},'minutes',this.value)">
+      <input type="number" value="${isHold?0:seg.rate}" title="速率(℃/min)" step="0.1" ${isHold?'disabled':''} oninput="fcSegUpdate(${i},'rate',this.value)">
+      <input type="text" value="${(seg.label||'').replace(/"/g,'&quot;')}" placeholder="标签，选填" oninput="fcSegUpdate(${i},'label',this.value)">
+      <button class="btn-icon" ${i===0?'disabled style="opacity:0.3"':''} onclick="fcMoveSegment(${i},-1)" title="上移">↑</button>
+      <button class="btn-icon" ${i===fcEditSegments.length-1?'disabled style="opacity:0.3"':''} onclick="fcMoveSegment(${i},1)" title="下移">↓</button>
+      <button class="btn-icon" onclick="fcRemoveSegment(${i})" title="删除">×</button>
+    </div>`;
+  }).join('') || `<div class="import-hint" style="padding:6px 0">还没有分段，点下面按钮添加</div>`;
+  renderFcEditPreview();
+}
+function validateFcEdit() {
+  const errors = [], warnings = [];
+  const name = document.getElementById('fc-edit-name').value.trim();
+  const startTemp = parseFloat(document.getElementById('fc-edit-starttemp').value);
+  if(!name) errors.push('请填写曲线名称');
+  if(!(startTemp >= 0)) errors.push('起始温度不能为负');
+  if(fcEditSegments.length === 0) errors.push('至少要有一段');
+  fcEditSegments.forEach((seg,i) => {
+    const prev = fcSegPrevTemp(i);
+    if(!(seg.minutes > 0)) errors.push(`第 ${i+1} 段时长必须大于 0`);
+    if(!(seg.targetTemp >= 0)) errors.push(`第 ${i+1} 段目标温度不能为负`);
+    if(seg.type === 'hold' && Math.abs(seg.targetTemp - prev) > 0.5) {
+      warnings.push(`第 ${i+1} 段是保温，但目标温度（${seg.targetTemp}℃）和上一段终点（${prev}℃）不一致`);
+    }
+  });
+  return { errors, warnings };
+}
+function renderFcEditPreview() {
+  const startTemp = parseFloat(document.getElementById('fc-edit-starttemp')?.value) || 0;
+  const totalMinutes = fcEditSegments.reduce((s,seg)=>s+(seg.minutes||0), 0);
+  const peakTemp = fcEditSegments.length ? Math.max(startTemp, ...fcEditSegments.map(s=>s.targetTemp)) : startTemp;
+  const summaryEl = document.getElementById('fc-edit-summary');
+  if(summaryEl) summaryEl.textContent = fcEditSegments.length ? `总时长 ${totalMinutes} min · 峰值温度 ${peakTemp}℃` : '添加分段后这里会显示总时长和峰值温度';
+  const chartEl = document.getElementById('fc-edit-chart');
+  if(chartEl) chartEl.innerHTML = renderFiringCurveChart({ startTemp, segments: fcEditSegments });
+  const warnEl = document.getElementById('fc-edit-warnings');
+  if(warnEl) {
+    const { warnings } = validateFcEdit();
+    warnEl.innerHTML = warnings.map(w=>`<div class="chem-warning">⚠ ${w}</div>`).join('');
+  }
+}
+function openFcEditModal(id) {
+  fcEditId = id || null;
+  const c = fcEditId ? firingCurves.find(x=>x.id===fcEditId) : null;
+  document.getElementById('fc-edit-title').textContent = c ? '编辑烧成曲线' : '新建烧成曲线';
+  document.getElementById('fc-edit-name').value = c ? c.name : '';
+  document.getElementById('fc-edit-starttemp').value = c ? c.startTemp : 30;
+  document.getElementById('fc-edit-note').value = c ? c.note : '';
+  autoGrowTextarea(document.getElementById('fc-edit-note'));
+  fcEditSegments = c ? (c.segments||[]).map(s => ({ minutes:s.minutes, targetTemp:s.targetTemp, rate:s.rate||0, type:s.type||'ramp', label:s.label||'', driver:'minutes' })) : [];
+  const isSeed = !!(c && FIRING_CURVE_SEED.some(s => s.name === c.name));
+  document.getElementById('fc-edit-seed-warning').style.display = isSeed ? '' : 'none';
+  document.getElementById('fc-edit-status').textContent = '';
+  renderFcEditSegments();
+  document.getElementById('fc-edit-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('fc-edit-name').focus(), 50);
+}
+function closeFcEditModal(e) {
+  if(!e || e.target===document.getElementById('fc-edit-modal')) {
+    document.getElementById('fc-edit-modal').classList.remove('open');
+  }
+}
+async function saveFcEdit() {
+  const status = document.getElementById('fc-edit-status');
+  const { errors } = validateFcEdit();
+  if(errors.length) { status.textContent = errors[0]; return; }
+  const name = document.getElementById('fc-edit-name').value.trim();
+  if(firingCurves.some(c => c.name === name && c.id !== fcEditId)) { status.textContent = '已有同名曲线，换个名字'; return; }
+  const note = document.getElementById('fc-edit-note').value.trim();
+  const startTemp = parseFloat(document.getElementById('fc-edit-starttemp').value) || 0;
+  const segments = fcEditSegments.map(({driver, ...seg}) => seg);
+  const totalMinutes = segments.reduce((s,seg)=>s+(seg.minutes||0), 0);
+  const peakTemp = segments.length ? Math.max(startTemp, ...segments.map(s=>s.targetTemp)) : startTemp;
+  const payload = { name, note, start_temp: startTemp, segments, total_minutes: totalMinutes, peak_temp: peakTemp };
+  status.textContent = '保存中…';
+  if(fcEditId) {
+    const { error } = await sb.from('firing_curves').update(payload).eq('id', fcEditId);
+    if(error) { status.textContent = '保存失败：'+error.message; return; }
+    Object.assign(firingCurves.find(x=>x.id===fcEditId), { name, note, startTemp, segments, totalMinutes, peakTemp });
+  } else {
+    const { data, error } = await sb.from('firing_curves').insert(payload).select().single();
+    if(error) { status.textContent = '保存失败：'+error.message; return; }
+    firingCurves.push(rowToFiringCurve(data));
+  }
+  closeFcEditModal();
+  renderFiringCurves();
+  renderCalibration();
+}
+async function deleteFiringCurve(id) {
+  const c = firingCurves.find(x => x.id === id);
+  if(!c) return;
+  const count = notebook.filter(r => r.firingCurveId === id).length;
+  const msg = count
+    ? `删除烧成曲线「${c.name}」？\n\n有 ${count} 条记录正在关联这条曲线，删除后这些记录会变为未关联烧成曲线（记录本身的配方/照片/笔记不受影响）。`
+    : `确定删除烧成曲线「${c.name}」？`;
+  if(!confirm(msg)) return;
+  const { error } = await sb.from('firing_curves').delete().eq('id', id);
+  if(error) { alert('删除失败：'+error.message); return; }
+  firingCurves = firingCurves.filter(x => x.id !== id);
+  // DB 侧 firing_curve_id 外键是 on delete set null，已经把这些记录清空了，本地状态同步一致
+  notebook.forEach(r => { if(r.firingCurveId === id) r.firingCurveId = null; });
+  renderFiringCurves();
+  renderNbAndFav();
+  renderCalibration();
 }
 
 // ── 反向校准（§3）──
