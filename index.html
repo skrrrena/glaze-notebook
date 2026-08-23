@@ -4990,7 +4990,7 @@ function nbCardHtml(rec, ni, idPrefix) {
           ${rec.status==='planned' ? `<button class="nb-load-btn" onclick="markNbDone(${ni})">标记为已烧</button>` : ''}
           <button class="nb-load-btn" onclick="${isComposite ? `openCompositeModalEdit(${ni})` : `openNbModalEdit(${ni})`}">编辑</button>
           <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
-          ${hasBase ? `<button class="nb-load-btn" onclick="openRecipeShareModal(${ni})">分享配方</button>` : ''}
+          ${(hasBase || isComposite) ? `<button class="nb-load-btn" onclick="openRecipeShareModal(${ni})">分享配方</button>` : ''}
           ${!isComposite ? `<button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>` : ''}
           ${hasBase ? `<button class="nb-load-btn" onclick="openRecipeCalcModal(${ni})">按此配料</button>` : ''}
           <button class="nb-load-btn" onclick="openFolderPicker('single', ['${rec.id}'])">移动到…</button>
@@ -5196,18 +5196,46 @@ async function generateRecipeShareLink() {
   const rec = recipeShareRecord;
   const status = document.getElementById('recipeshare-status');
   if(!rec) return;
-  const base = (rec.baseIngredients||[]).filter(i=>i.parts>0);
-  if(!base.length) { status.textContent = '这条记录没有基础原料，无法分享'; return; }
+  const isComposite = rec.entryType === 'composite_test';
   const name = document.getElementById('recipeshare-name').value.trim() || rec.name || '未命名配方';
-  // 分享内容只装配方本身：基釉+添加剂必带；烧成曲线/心得/标签按分享人这次的勾选决定，
+  // 分享内容只装配方本身：基釉+添加剂（或复合釉的图层栈）必带；烧成曲线/心得/标签按分享人这次的勾选决定，
   // 心得用分享人现填的对外文本，绝不直接带走私人 note；不带照片、num、folder、starred 等私有信息。
-  const payload = {
-    v: 1,
-    name,
-    baseIngredients: base.map(i=>({name:i.name, parts:i.parts})),
-    baseDry: rec.baseDry||0, baseWater: rec.baseWater||0,
-    additives: {...(rec.additives||{})},
-  };
+  let payload;
+  if(isComposite) {
+    const layers = layersForEntry(rec.id);
+    if(!layers.length) { status.textContent = '这条记录没有图层，无法分享'; return; }
+    // glazeId 只在分享人自己的釉库里有意义，换账号就失效——分享内容改带可移植的釉名/品牌/色系，
+    // 接收方导入时按这些字段在自己的釉库里查找或新建对应条目。
+    payload = {
+      v: 1,
+      kind: 'composite',
+      name,
+      clayBody: rec.clayBody || '',
+      firing: rec.firing || '',
+      layers: layers.map(l => {
+        const g = compositeGlazes.find(x=>x.id===l.glazeId);
+        return {
+          glazeName: g ? g.name : '？',
+          brand: g ? (g.brand||'') : '',
+          productCode: g ? (g.productCode||'') : '',
+          colorFamily: g ? (g.colorFamily||'') : '',
+          glazeNotes: g ? (g.notes||'') : '',
+          application: l.application || '',
+          coats: l.coats || 1,
+        };
+      }),
+    };
+  } else {
+    const base = (rec.baseIngredients||[]).filter(i=>i.parts>0);
+    if(!base.length) { status.textContent = '这条记录没有基础原料，无法分享'; return; }
+    payload = {
+      v: 1,
+      name,
+      baseIngredients: base.map(i=>({name:i.name, parts:i.parts})),
+      baseDry: rec.baseDry||0, baseWater: rec.baseWater||0,
+      additives: {...(rec.additives||{})},
+    };
+  }
   if(document.getElementById('recipeshare-firing-check').checked) {
     const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
     if(fc) payload.firingCurve = {
@@ -5247,25 +5275,8 @@ function copyRecipeShareLink() {
 
 // -- 接收方：解码防御。#import= 的内容来自外部链接，不可信任，所有字段做类型/范围校验，
 // 通过前绝不写库。校验失败一律友好报错，不崩、不半写。 --
-function validateShareData(data) {
-  if(!data || typeof data !== 'object' || Array.isArray(data)) return false;
-  if(data.v !== 1) return false;
-  if(typeof data.name !== 'string' || !data.name.trim() || data.name.length > 200) return false;
-  if(!Array.isArray(data.baseIngredients) || !data.baseIngredients.length || data.baseIngredients.length > 100) return false;
-  for(const i of data.baseIngredients) {
-    if(!i || typeof i !== 'object') return false;
-    if(typeof i.name !== 'string' || !i.name.trim() || i.name.length > 100) return false;
-    if(typeof i.parts !== 'number' || !isFinite(i.parts) || i.parts <= 0) return false;
-  }
-  if(typeof data.additives !== 'object' || data.additives === null || Array.isArray(data.additives)) return false;
-  const addNames = Object.keys(data.additives);
-  if(addNames.length > 100) return false;
-  for(const [k,v] of Object.entries(data.additives)) {
-    if(!k.trim() || k.length > 100) return false;
-    if(typeof v !== 'number' || !isFinite(v) || v < 0) return false;
-  }
-  if(data.baseDry !== undefined && (typeof data.baseDry !== 'number' || !isFinite(data.baseDry) || data.baseDry < 0)) return false;
-  if(data.baseWater !== undefined && (typeof data.baseWater !== 'number' || !isFinite(data.baseWater) || data.baseWater < 0)) return false;
+// note / effectTags / firingCurve 是配方型和复合釉型分享共用的可选字段，抽出来避免两边重复校验逻辑走偏
+function validateShareCommonFields(data) {
   if(data.note !== undefined && (typeof data.note !== 'string' || data.note.length > 5000)) return false;
   if(data.effectTags !== undefined) {
     if(!Array.isArray(data.effectTags) || data.effectTags.length > 50) return false;
@@ -5284,17 +5295,68 @@ function validateShareData(data) {
   }
   return true;
 }
+function validateCompositeShareData(data) {
+  if(typeof data.name !== 'string' || !data.name.trim() || data.name.length > 200) return false;
+  if(!Array.isArray(data.layers) || !data.layers.length || data.layers.length > 50) return false;
+  for(const l of data.layers) {
+    if(!l || typeof l !== 'object') return false;
+    if(typeof l.glazeName !== 'string' || !l.glazeName.trim() || l.glazeName.length > 100) return false;
+    if(l.brand !== undefined && (typeof l.brand !== 'string' || l.brand.length > 100)) return false;
+    if(l.productCode !== undefined && (typeof l.productCode !== 'string' || l.productCode.length > 100)) return false;
+    if(l.colorFamily !== undefined && (typeof l.colorFamily !== 'string' || l.colorFamily.length > 100)) return false;
+    if(l.glazeNotes !== undefined && (typeof l.glazeNotes !== 'string' || l.glazeNotes.length > 2000)) return false;
+    if(l.application !== undefined && (typeof l.application !== 'string' || l.application.length > 100)) return false;
+    if(l.coats !== undefined && (typeof l.coats !== 'number' || !isFinite(l.coats) || l.coats <= 0)) return false;
+  }
+  if(data.clayBody !== undefined && (typeof data.clayBody !== 'string' || data.clayBody.length > 200)) return false;
+  if(data.firing !== undefined && (typeof data.firing !== 'string' || data.firing.length > 200)) return false;
+  return validateShareCommonFields(data);
+}
+function validateShareData(data) {
+  if(!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  if(data.v !== 1) return false;
+  if(data.kind === 'composite') return validateCompositeShareData(data);
+  if(typeof data.name !== 'string' || !data.name.trim() || data.name.length > 200) return false;
+  if(!Array.isArray(data.baseIngredients) || !data.baseIngredients.length || data.baseIngredients.length > 100) return false;
+  for(const i of data.baseIngredients) {
+    if(!i || typeof i !== 'object') return false;
+    if(typeof i.name !== 'string' || !i.name.trim() || i.name.length > 100) return false;
+    if(typeof i.parts !== 'number' || !isFinite(i.parts) || i.parts <= 0) return false;
+  }
+  if(typeof data.additives !== 'object' || data.additives === null || Array.isArray(data.additives)) return false;
+  const addNames = Object.keys(data.additives);
+  if(addNames.length > 100) return false;
+  for(const [k,v] of Object.entries(data.additives)) {
+    if(!k.trim() || k.length > 100) return false;
+    if(typeof v !== 'number' || !isFinite(v) || v < 0) return false;
+  }
+  if(data.baseDry !== undefined && (typeof data.baseDry !== 'number' || !isFinite(data.baseDry) || data.baseDry < 0)) return false;
+  if(data.baseWater !== undefined && (typeof data.baseWater !== 'number' || !isFinite(data.baseWater) || data.baseWater < 0)) return false;
+  return validateShareCommonFields(data);
+}
 
 let recipeImportData = null;
 function openRecipeImportPreview(data) {
   recipeImportData = data;
   document.getElementById('recipeimport-title').textContent = escapeHtml(data.name);
-  const baseRows = data.baseIngredients.map(i =>
-    `<tr><td>${escapeHtml(i.name)}</td><td>${i.parts}</td><td>—</td></tr>`).join('');
-  const addRows = Object.entries(data.additives).map(([name,pct]) =>
-    `<tr><td>${escapeHtml(name)}<span class="tag-add">外加</span></td><td>—</td><td class="pct-highlight">${(+pct).toFixed(3)}%</td></tr>`).join('');
   const parts = [];
-  parts.push(`<table><thead><tr><th>原料</th><th>份数</th><th>添加剂外加%</th></tr></thead><tbody>${baseRows}${addRows}</tbody></table>`);
+  if(data.kind === 'composite') {
+    parts.push(`<div class="nb-section-label">釉层（底 → 面）</div>`);
+    parts.push(`<div class="nb-layer-stack">${data.layers.map((l,i)=>
+      `${i>0?'<span class="nb-layer-arrow">›</span>':''}<span class="nb-layer-chip">${escapeHtml(l.glazeName)}${l.brand?` <span style="opacity:0.6">(${escapeHtml(l.brand)})</span>`:''}${(l.coats||1)>1?` ×${l.coats}遍`:''}${l.application?` <span style="opacity:0.6">${escapeHtml(l.application)}</span>`:''}</span>`
+    ).join('')}</div>`);
+    const metaTags = [
+      data.clayBody ? `<span class="nb-ingredient-tag">泥料：${escapeHtml(data.clayBody)}</span>` : '',
+      data.firing ? `<span class="nb-ingredient-tag">烧成：${escapeHtml(data.firing)}</span>` : '',
+    ].filter(Boolean).join('');
+    if(metaTags) parts.push(`<div class="nb-row" style="margin-top:8px">${metaTags}</div>`);
+  } else {
+    const baseRows = data.baseIngredients.map(i =>
+      `<tr><td>${escapeHtml(i.name)}</td><td>${i.parts}</td><td>—</td></tr>`).join('');
+    const addRows = Object.entries(data.additives).map(([name,pct]) =>
+      `<tr><td>${escapeHtml(name)}<span class="tag-add">外加</span></td><td>—</td><td class="pct-highlight">${(+pct).toFixed(3)}%</td></tr>`).join('');
+    parts.push(`<table><thead><tr><th>原料</th><th>份数</th><th>添加剂外加%</th></tr></thead><tbody>${baseRows}${addRows}</tbody></table>`);
+  }
   if(data.firingCurve) {
     const fc = data.firingCurve;
     parts.push(`<div class="nb-section-label">烧成曲线</div><div class="nb-row"><span class="nb-ingredient-tag">${escapeHtml(fc.name)}${fc.peakTemp?` · 峰值 ${fc.peakTemp}℃`:''}${fc.atmosphere?` · ${escapeHtml(fc.atmosphere)}`:''}</span></div>`);
@@ -5340,22 +5402,64 @@ async function confirmRecipeImport() {
       }
     }
   }
-  const payload = {
-    name: data.name,
-    note: data.note || '',
-    base_ingredients: data.baseIngredients.map(i=>({name:i.name, parts:i.parts})),
-    base_dry: data.baseDry || 0,
-    base_water: data.baseWater || 0,
-    glazes: [],
-    additives: {...data.additives},
-    effect_tags: data.effectTags || [],
-    entry_type: 'imported',
-    firing_curve_id: firingCurveId,
-    folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
-  };
-  const { data: row, error } = await sb.from('notebook_entries').insert(payload).select().single();
-  if(error) { status.textContent = '导入失败：' + error.message; return; }
-  notebook.unshift(rowToNotebook(row));
+  if(data.kind === 'composite') {
+    // 图层里的 glazeId 在分享人自己账号里才有意义，接收方要按名称+品牌在自己的釉库里找同款，
+    // 找不到就现建一条——绝不能直接把分享人的 glazeId 抄过来（跨账号无意义，RLS 也读不到）。
+    const layerGlazeIds = [];
+    for(const l of data.layers) {
+      let g = compositeGlazes.find(x => x.name === l.glazeName && (x.brand||'') === (l.brand||''));
+      if(!g) {
+        const { data: gRow, error: gErr } = await sb.from('composite_glazes').insert({
+          name: l.glazeName, brand: l.brand || null, product_code: l.productCode || null,
+          color_family: l.colorFamily || null, notes: l.glazeNotes || null,
+        }).select().single();
+        if(gErr) { status.textContent = '导入失败：' + gErr.message; return; }
+        g = rowToCompositeGlaze(gRow);
+        compositeGlazes.push(g);
+      }
+      layerGlazeIds.push(g.id);
+    }
+    const payload = {
+      name: data.name,
+      note: data.note || '',
+      base_ingredients: [], base_dry: 0, base_water: 0, glazes: [], additives: {},
+      effect_tags: data.effectTags || [],
+      entry_type: 'composite_test',
+      status: 'done',
+      clay_body: data.clayBody || '',
+      firing: data.firing || '',
+      firing_curve_id: firingCurveId,
+      folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
+    };
+    const { data: row, error } = await sb.from('notebook_entries').insert(payload).select().single();
+    if(error) { status.textContent = '导入失败：' + error.message; return; }
+    const entryId = row.id;
+    const layerRows = data.layers.map((l,i) => ({
+      entry_id: entryId, glaze_id: layerGlazeIds[i], layer_order: i+1,
+      application: (l.application||'').trim() || null, coats: l.coats||1,
+    }));
+    const { data: newLayers, error: layerErr } = await sb.from('composite_layers').insert(layerRows).select();
+    if(layerErr) { status.textContent = '导入失败：图层保存失败：' + layerErr.message; return; }
+    compositeLayers.push(...(newLayers||[]).map(rowToCompositeLayer));
+    notebook.unshift(rowToNotebook(row));
+  } else {
+    const payload = {
+      name: data.name,
+      note: data.note || '',
+      base_ingredients: data.baseIngredients.map(i=>({name:i.name, parts:i.parts})),
+      base_dry: data.baseDry || 0,
+      base_water: data.baseWater || 0,
+      glazes: [],
+      additives: {...data.additives},
+      effect_tags: data.effectTags || [],
+      entry_type: 'imported',
+      firing_curve_id: firingCurveId,
+      folder_id: (nbActiveFolderId && nbActiveFolderId !== NB_UNFILED) ? nbActiveFolderId : null,
+    };
+    const { data: row, error } = await sb.from('notebook_entries').insert(payload).select().single();
+    if(error) { status.textContent = '导入失败：' + error.message; return; }
+    notebook.unshift(rowToNotebook(row));
+  }
   updateNbBadge();
   renderNbAndFav();
   closeRecipeImportModal();
