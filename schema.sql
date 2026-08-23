@@ -258,3 +258,7 @@ alter table public.notebook_entries add column if not exists clay_body text; -- 
 alter table public.notebook_entries add column if not exists firing text;    -- 烧成，先用文本，后续接烧成曲线系统
 
 alter table public.composite_layers add column if not exists coats int not null default 1; -- 该层施釉遍数（如"底釉刷2遍"）
+
+-- ── 示例数据（新用户首次登录时给几条演示记录，而非空白页）：
+-- is_demo 记录不计入反向校准数据集，卡片上显示"示例"角标，可一键清除，不影响用户自己的其它数据 ──
+alter table public.notebook_entries add column if not exists is_demo boolean not null default false;
