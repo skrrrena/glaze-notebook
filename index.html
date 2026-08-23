@@ -3092,6 +3092,10 @@ async function updateMaterialField(id, field, value) {
 function renderMaterials() {
   const wrap = document.getElementById('materials-list');
   if(!wrap) return;
+  if(materials.length === 0) {
+    wrap.innerHTML = `<div class="empty-result" style="padding:20px 0"><div class="big">土</div>原料库还是空的<br>正常情况下首次登录会自动填入常用原料的教科书氧化物数据，如果这里是空的，试试刷新页面重新加载。</div>`;
+    return;
+  }
   wrap.innerHTML = materials.map(m => {
     const oxideStr = Object.entries(m.oxides||{}).map(([k,v])=>`${k}:${v}`).join(', ');
     return `
@@ -3420,6 +3424,19 @@ function renderCalibration() {
   const unclassifiedCount = notebook.filter(r => !r.firingCurveId).length;
   const unreliableCount = notebook.filter(r => r.dataConfidence !== '可靠').length;
 
+  // 规律分析至少需要几条能算出釉料化学式的可靠记录才有意义；数据不够时给引导文案，
+  // 不堆一叠"样本不足"的假设卡片（新用户/空账号看着像功能坏了）。
+  if(crystalItems.length + regularItems.length < 3) {
+    wrap.innerHTML = `
+    <div class="empty-result" style="padding:20px 0">
+      <div class="big">析</div>
+      规律校准需要积累一定量数据才会自动分析<br>
+      给试片记录关联烧成曲线、标可信度为"可靠"、勾选效果标签，攒够几条后这里会自动切换成规律分析视图。<br>
+      <span style="font-size:0.78rem;color:var(--ink3)">当前可用于校准的记录：${crystalItems.length + regularItems.length} 条（未关联烧成曲线 ${unclassifiedCount} 条、可信度非"可靠" ${unreliableCount} 条，均不参与校准）</span>
+    </div>`;
+    return;
+  }
+
   const sections = [];
 
   sections.push(`
@@ -3440,8 +3457,8 @@ function renderCalibration() {
   } else {
     const cMax = Math.max(...crystalAl), rMin = Math.min(...regularAl);
     hypB = cMax < rMin
-      ? `结晶曲线组 Al2O3（${statRange(crystalAl)}）整体低于常规曲线组（${statRange(regularAl)}），支持"结晶需要更低 Al2O3"——但见下方 306 系对照，常规曲线组内部并不均匀，光看这个对比会漏掉重要例外。`
-      : `两组 Al2O3 区间有重叠（结晶曲线组 ${statRange(crystalAl)}，常规曲线组 ${statRange(regularAl)}），不能简单下"低 Al2O3→结晶"的结论——常规曲线组里混有 306 系这种本身 Al2O3 也很低的配方，见下方专门对照。`;
+      ? `结晶曲线组 Al2O3（${statRange(crystalAl)}）整体低于常规曲线组（${statRange(regularAl)}），初步支持"结晶需要更低 Al2O3"——但两组内部配方差异可能仍不小，具体可在上方逐条核对，光看区间容易漏掉例外配方。`
+      : `两组 Al2O3 区间有重叠（结晶曲线组 ${statRange(crystalAl)}，常规曲线组 ${statRange(regularAl)}），不能简单下"低 Al2O3→结晶"的结论——两组内部配方差异较大，具体可在上方逐条核对。`;
   }
   sections.push(`
     <div class="mat-card">
@@ -3451,19 +3468,6 @@ function renderCalibration() {
       <div class="chem-note" style="display:block;margin:6px 0">常规曲线组</div>
       ${regularItems.map(x=>calibRecordRow(x.rec,x.seger)).join('') || '<div class="chem-note" style="display:block">（无）</div>'}
       <div class="chem-ratio">${hypB}</div>
-    </div>`);
-
-  // 201 系（结晶曲线）vs 306 系（常规曲线，仍结晶）—— 天然对照组
-  const series201 = crystalItems.filter(x => ['201','202','204','205','206','207'].includes(x.rec.num));
-  const series306 = regularItems.filter(x => ['306','311','312','313','314','315','316'].includes(x.rec.num));
-  sections.push(`
-    <div class="mat-card">
-      <div class="chem-col-title">201 系（结晶曲线）vs 306 系（常规曲线，但也结晶）—— 天然对照组</div>
-      <div class="chem-note" style="display:block;margin-bottom:6px">201 系（走结晶曲线）</div>
-      ${series201.map(x=>calibRecordRow(x.rec,x.seger)).join('') || '<div class="chem-note" style="display:block">（无可靠数据）</div>'}
-      <div class="chem-note" style="display:block;margin:6px 0">306 系（走常规曲线，仍长出晶花/月魄白）</div>
-      ${series306.map(x=>calibRecordRow(x.rec,x.seger)).join('') || '<div class="chem-note" style="display:block">（无可靠数据；306 本身因实物污染标记不可靠，仅 311-316 计入）</div>'}
-      <div class="chem-ratio">来自你自己数据的发现：结晶不一定需要结晶曲线（crash-cool + 保温），配方本身高 ZnO、极低 Al2O3、高流动性（306 是"鼻涕釉"）可能就足够让熔体在冷却过程中析晶。这不是教科书规律，只是这批数据里观察到的现象，样本仍然很小，仅供参考。</div>
     </div>`);
 
   // 假设 A：哑光效果来自 BaO+MgO 而非硅铝比
@@ -3492,7 +3496,7 @@ function renderCalibration() {
   const noCrackItems = withEffect.filter(x => !x.effect.tags.includes('开裂'));
   let hypC;
   if(crackItems.length < 1) {
-    hypC = `已分类烧成曲线组里目前没有带"开裂"效果信号的可靠记录（301 裂纹丝光镁基釉是最直接的例子，但它的烧成曲线还未确认，暂不计入校准）。确认 301 系的烧成曲线、或给相关记录补充效果标签后可以重新分析。`;
+    hypC = `已分类烧成曲线组里目前没有带"开裂"效果信号的可靠记录。给相关记录确认烧成曲线归属、补充效果标签后，这里会自动重新分析。`;
   } else {
     const crackSi = crackItems.map(x => x.seger.unity.SiO2||0);
     const crackAlkali = crackItems.map(x => (x.seger.unity.K2O||0)+(x.seger.unity.Na2O||0)+(x.seger.unity.Li2O||0));
