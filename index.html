@@ -5736,14 +5736,28 @@ async function clearDemoData() {
   const demoRecs = notebook.filter(r => r.isDemo);
   if(!demoRecs.length) { alert('没有示例数据（可能已经清除过了）'); return; }
   if(!confirm(`清除全部 ${demoRecs.length} 条示例数据？此操作不可撤销。`)) return;
+  const demoIds = demoRecs.map(r => r.id);
+  // demo 记录（如 H01）引用的库存釉是单独一张表，entries 的 on delete cascade 只会带走
+  // composite_layers，不会带走 composite_glazes 本身——删完记录后这些釉会变成 0 引用的孤儿，
+  // 之前没清，导致重复种子跑几次库里就攒下几条重名的死釉。这里删完记录后顺手把它们也清掉，
+  // 只删这次被删 layer 引用过、且清完后确实 0 引用的釉，不会碰其它记录还在用的。
+  const touchedGlazeIds = [...new Set(compositeLayers.filter(l => demoIds.includes(l.entryId)).map(l => l.glazeId))];
   for(const rec of demoRecs) {
     await deleteAllPhotosForRecord('notebook_entries', rec);
   }
-  await sb.from('notebook_entries').delete().in('id', demoRecs.map(r => r.id));
+  await sb.from('notebook_entries').delete().in('id', demoIds);
   notebook = notebook.filter(r => !r.isDemo);
+  compositeLayers = compositeLayers.filter(l => !demoIds.includes(l.entryId));
+  const orphanGlazeIds = touchedGlazeIds.filter(gid => !compositeLayers.some(l => l.glazeId === gid));
+  if(orphanGlazeIds.length) {
+    await sb.from('composite_glazes').delete().in('id', orphanGlazeIds);
+    compositeGlazes = compositeGlazes.filter(g => !orphanGlazeIds.includes(g.id));
+  }
   updateNbBadge();
   renderNbAndFav();
   renderCalibration();
+  renderGlazeLibraryList();
+  renderCompositeLayers();
 }
 
 function editNbName(ni, idPrefix='nb') {
