@@ -1319,7 +1319,7 @@
           <input type="number" id="base-water" value="160" min="0" step="1">
         </div>
       </div>
-      <button class="btn-ghost" style="margin-top:10px;border-style:solid;color:var(--nb);border-color:var(--nb-line);" onclick="openBaseNbModal()">册 存入配方本</button>
+      <button class="btn-ghost" style="margin-top:10px;border-style:solid;color:var(--nb);border-color:var(--nb-line);" onclick="openBaseNbModal()">存入配方本</button>
 
       <hr class="divider">
 
@@ -1665,7 +1665,9 @@
       <span style="font-size:0.72rem;color:var(--ink3);align-self:center">色系</span>
       <input type="text" id="glazelib-new-color" placeholder="选填">
     </div>
-    <button class="nbmodal-confirm" style="margin-top:8px" onclick="glazeLibraryAdd()">＋ 添加</button>
+    <div class="nbmodal-btns">
+      <button class="nbmodal-confirm" onclick="glazeLibraryAdd()">＋ 添加</button>
+    </div>
     <div class="nbmodal-btns">
       <button class="nbmodal-cancel" style="flex:none;width:100%" onclick="closeGlazeLibraryModal()">关闭</button>
     </div>
@@ -4452,7 +4454,7 @@ function batchGroupCardHtml(g, gi) {
     <div class="batch-group-card">
       <div class="batch-group-card-head">
         <span class="batch-group-card-title">${batchGroupLabel(g,gi)}</span>
-        <button class="btn-icon" onclick="batchDisbandGroup('${g.id}')" title="解散此组">解散</button>
+        <button class="btn-icon" style="width:auto;padding:2px 8px" onclick="batchDisbandGroup('${g.id}')" title="解散此组">解散</button>
       </div>
       <div class="batch-group-thumbstrip">
         ${photos.map((f,pi) => `
