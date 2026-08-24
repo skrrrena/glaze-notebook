@@ -322,6 +322,12 @@
   .io-btn-import { background: var(--card); color: var(--fav); border-color: var(--fav-line); }
   .io-btn-import:hover { background: var(--fav-bg); border-color: var(--fav); }
   .import-hint { font-size: 0.72rem; color: var(--ink3); font-family: var(--font-mono); }
+  .glazelib-dup-hint { font-size: 0.72rem; color: var(--ink3); font-family: var(--font-mono); margin: 4px 0 8px; }
+  .glazelib-dup-hint button {
+    background: none; border: none; padding: 0; margin-left: 8px;
+    color: var(--accent); font-family: var(--font-mono); font-size: 0.72rem;
+    text-decoration: underline; cursor: pointer;
+  }
   .batch-bar {
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
@@ -1652,7 +1658,8 @@
     <h3>釉库管理</h3>
     <div id="glazelib-list"></div>
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3);margin-top:14px">新增成品釉</div>
-    <input type="text" id="glazelib-new-name" placeholder="名称（必填）" maxlength="40">
+    <input type="text" id="glazelib-new-name" placeholder="名称（必填）" maxlength="40" oninput="glazeLibraryCheckDup()">
+    <div id="glazelib-dup-hint" class="glazelib-dup-hint" style="display:none"></div>
     <div class="nbmodal-row">
       <span style="font-size:0.72rem;color:var(--ink3);align-self:center">品牌</span>
       <input type="text" id="glazelib-new-brand" placeholder="选填">
@@ -2320,7 +2327,13 @@ async function boot() {
     if(!error) firingCurves = (data||[]).map(rowToFiringCurve);
   }
   if(notebook.length === 0) {
-    await seedDemoData();
+    // notebook.length===0 alone isn't race-safe (two tabs / a fast reload can both see an
+    // empty notebook before either insert lands and seed twice). demo_seed_lock's user_id
+    // primary key makes the actual gate atomic: only the insert that wins gets to seed.
+    const { error: seedLockErr } = await sb.from('demo_seed_lock').insert({ user_id: currentUserId });
+    if(!seedLockErr) {
+      await seedDemoData();
+    }
   }
 
   await resolvePhotoUrls(notebook);
@@ -4109,6 +4122,7 @@ function openGlazeLibraryModal() {
   ['glazelib-new-name','glazelib-new-brand','glazelib-new-code','glazelib-new-color'].forEach(id=>{
     document.getElementById(id).value = '';
   });
+  document.getElementById('glazelib-dup-hint').style.display = 'none';
   document.getElementById('glazelib-modal').classList.add('open');
 }
 function closeGlazeLibraryModal(e) {
@@ -4131,6 +4145,28 @@ function renderGlazeLibraryList() {
     </div>
   `).join('');
 }
+// 只提醒不阻止：同名不同品牌的釉是合理存在的（比如同叫"奶油白"的两个厂家），
+// 所以这里不做硬性唯一约束，只在输入框下方给个可忽略的轻提示。
+function glazeLibraryCheckDup() {
+  const hint = document.getElementById('glazelib-dup-hint');
+  const name = document.getElementById('glazelib-new-name').value.trim();
+  const dup = name && compositeGlazes.find(g => g.name === name);
+  if(!dup) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+  hint.style.display = '';
+  hint.innerHTML = `库里已有"${name}"`
+    + `<button type="button" onclick="glazeLibraryUseExisting()">使用已有</button>`
+    + `<button type="button" onclick="glazeLibraryKeepNew()">仍要新建</button>`;
+}
+function glazeLibraryUseExisting() {
+  ['glazelib-new-name','glazelib-new-brand','glazelib-new-code','glazelib-new-color'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  glazeLibraryCheckDup();
+}
+function glazeLibraryKeepNew() {
+  document.getElementById('glazelib-dup-hint').style.display = 'none';
+  document.getElementById('glazelib-new-brand').focus();
+}
 async function glazeLibraryAdd() {
   const name = document.getElementById('glazelib-new-name').value.trim();
   if(!name) { alert('名称必填'); return; }
@@ -4146,6 +4182,7 @@ async function glazeLibraryAdd() {
   ['glazelib-new-name','glazelib-new-brand','glazelib-new-code','glazelib-new-color'].forEach(id=>{
     document.getElementById(id).value = '';
   });
+  document.getElementById('glazelib-dup-hint').style.display = 'none';
   renderGlazeLibraryList();
   renderCompositeLayers();
 }

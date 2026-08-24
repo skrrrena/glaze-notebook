@@ -262,3 +262,14 @@ alter table public.composite_layers add column if not exists coats int not null 
 -- ── 示例数据（新用户首次登录时给几条演示记录，而非空白页）：
 -- is_demo 记录不计入反向校准数据集，卡片上显示"示例"角标，可一键清除，不影响用户自己的其它数据 ──
 alter table public.notebook_entries add column if not exists is_demo boolean not null default false;
+
+-- ── 示例数据播种锁：notebook.length===0 只是内存判断，多标签页/快速刷新时两次 boot() 都可能
+-- 在彼此的 insert 落地前看到"空"，从而各自播种一遍。user_id 主键保证互斥：谁先插入成功，
+-- 谁才有资格执行 seedDemoData()，另一个会因主键冲突拿到 error 而跳过。──
+create table public.demo_seed_lock (
+  user_id    uuid primary key default auth.uid(),
+  seeded_at  timestamptz not null default now()
+);
+alter table public.demo_seed_lock enable row level security;
+create policy "dsl select own" on public.demo_seed_lock for select using (auth.uid() = user_id);
+create policy "dsl insert own" on public.demo_seed_lock for insert with check (auth.uid() = user_id);
