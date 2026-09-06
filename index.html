@@ -475,12 +475,21 @@
     color: var(--ink); letter-spacing: 0.02em;
   }
   .nb-date { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink3); white-space: nowrap; }
-  .nb-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .nb-quick-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .nb-menu-trigger {
-    display: none; background: none; border: 1px solid var(--line);
+    display: inline-flex; align-items: center; background: none; border: 1px solid var(--line);
     color: var(--ink-3); border-radius: 4px; padding: 2px 8px;
     cursor: pointer; font-size: 14px; line-height: 1.4; flex-shrink: 0;
   }
+  /* 「更多」菜单：低频操作（分享卡/分享配方/移动到…）收在这里，默认折叠，避免和高频操作抢主位 */
+  .nb-actions {
+    display: none; position: absolute; top: 42px; right: 16px;
+    flex-direction: column; gap: 4px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 20;
+  }
+  .nb-actions.nb-actions-open { display: flex; }
+  .nb-actions .nb-load-btn, .nb-actions .nb-del-btn { text-align: left; }
   .nb-load-btn {
     font-size: 0.72rem; font-family: var(--font-mono);
     padding: 3px 10px; border-radius: 3px;
@@ -597,6 +606,10 @@
   }
   .chem-warning {
     font-size: 0.72rem; color: var(--danger); line-height: 1.6;
+  }
+  .chem-confidence-badge {
+    font-size: 0.62rem; color: var(--ink3); border: 1px dashed var(--ink3); border-radius: 3px;
+    padding: 1px 5px; letter-spacing: 0; margin-left: 4px;
   }
   .mat-card {
     background: var(--card); border: 1px solid var(--line); border-radius: 6px;
@@ -1235,7 +1248,6 @@
     .fav-panel, .nb-panel { padding: 1rem; }
     .panel-left, .panel-right { padding: 1.2rem; }
 
-    .nb-menu-trigger { display: inline-flex; align-items: center; }
     .nb-head-row2 {
       position: absolute; left: 16px; bottom: 8px;
       gap: 0;
@@ -1245,14 +1257,6 @@
     }
     .nb-date::before { content: "记录于 "; }
     .nb-body { padding-bottom: 30px; }
-    .nb-actions {
-      display: none; position: absolute; top: 42px; right: 16px;
-      flex-direction: column; gap: 4px; background: var(--card);
-      border: 1px solid var(--line); border-radius: 8px; padding: 6px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 20;
-    }
-    .nb-actions.nb-actions-open { display: flex; }
-    .nb-actions .nb-load-btn, .nb-actions .nb-del-btn { text-align: left; }
 
     .nb-toolbar, .fav-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
     .nb-toolbar-right, .fav-toolbar-right { margin-left: 0; overflow-x: auto; }
@@ -1782,7 +1786,8 @@
     <input type="hidden" id="nb-modal-edit-index" value="">
     <input type="hidden" id="nb-modal-glaze-index" value="">
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">编号</div>
-    <input type="text" id="nb-modal-num" placeholder="如：201、202A、试验1" maxlength="20" style="width:160px">
+    <input type="text" id="nb-modal-num" placeholder="如：201、202A、试验1" maxlength="20" style="width:160px" oninput="nbModalCheckNumDup()">
+    <div id="nb-modal-num-dup-hint" class="glazelib-dup-hint" style="display:none"></div>
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">配方名称</div>
     <input type="text" id="nb-modal-name" placeholder="如：大结晶基釉、冰蓝结晶" maxlength="40">
     <div class="field-label" style="font-size:0.72rem;color:var(--ink3)">基础原料（份数）</div>
@@ -3129,10 +3134,13 @@ function computeSegerFormula(baseIngredients, additivesObj) {
   const typicalMats = [...new Set(contributions.filter(c=>c.material.source==='typical').map(c=>c.name))];
   if(typicalMats.length) reliabilityNotes.push(`以下原料成分为教科书典型值，非供应商实测：${typicalMats.join('、')}`);
   if(unknownOxides.size) reliabilityNotes.push(`以下氧化物不在分子量表中，未计入摩尔计算：${[...unknownOxides].join('、')}`);
+  // "已核对"是原料库里用户手动确认过成分准确的信号（勾选框），比 source 字段更贴近这次计算
+  // 到底能不能信——只要有一条贡献原料没勾"已核对"，这次算出的数字就不该被当成实测精度看
+  const allVerified = contributions.every(c => c.material.verified);
 
   return {
     ok:true, unity, ratios:{ sga }, fluxBreakdown,
-    colorants, opacifiers, reliabilityNotes,
+    colorants, opacifiers, reliabilityNotes, allVerified,
   };
 }
 
@@ -3173,8 +3181,11 @@ function renderChemPanel(baseIngredients, additivesObj, collected) {
   const flux = r.fluxBreakdown;
   const fluxSummary = `碱金属(K2O+Na2O+Li2O) ${(flux.alkali*100).toFixed(1)}% · 碱土(CaO+MgO+SrO) ${(flux.alkalineEarth*100).toFixed(1)}% · 其他(ZnO/BaO等) ${(flux.other*100).toFixed(1)}%`;
 
+  // 折叠态下也要看得出这次计算能不能信——放进 summary，不用展开面板才看到
+  const confidenceBadge = r.allVerified ? '' : ` <span class="chem-confidence-badge" title="至少一种原料的成分数据还没在原料库里勾选'已核对'，是教科书典型值，实际成分可能有偏差">基于未核对典型值</span>`;
+
   return `<details class="chem-panel">
-    <summary class="chem-summary">🧪 化学分析（Seger 式，参考值）</summary>
+    <summary class="chem-summary">🧪 化学分析（Seger 式，参考值）${confidenceBadge}</summary>
     <div class="chem-body">
       <div class="chem-cols">
         <div class="chem-col"><div class="chem-col-title">RO / R2O</div>${fluxRows}</div>
@@ -3695,6 +3706,7 @@ function openNbModal(glazeIndex, glazeState) {
   // calc tab from a previous load/calculation — confirmNbSave must not inherit it.
   document.getElementById('nb-modal-glaze-index').value = glazeIndex !== null ? glazeIndex : '';
   document.getElementById('nb-modal-num').value = glazeIndex !== null ? (glazes[glazeIndex].name.replace(/号.*/, '号') || '') : '';
+  nbModalCheckNumDup();
   document.getElementById('nb-modal-name').value = glazeIndex !== null ? glazes[glazeIndex].name : '';
   document.getElementById('nb-modal-note').value = '';
   autoGrowTextarea(document.getElementById('nb-modal-note'));
@@ -3743,6 +3755,7 @@ function openNbModalEdit(ni) {
   document.getElementById('nb-modal-edit-index').value = ni;
   document.getElementById('nb-modal-glaze-index').value = '';
   document.getElementById('nb-modal-num').value = rec.num || '';
+  nbModalCheckNumDup();
   document.getElementById('nb-modal-name').value = rec.name || '';
   document.getElementById('nb-modal-note').value = rec.note || '';
   autoGrowTextarea(document.getElementById('nb-modal-note'));
@@ -3814,6 +3827,18 @@ function closeNbModal(e) {
     document.getElementById('nb-modal').classList.remove('open');
     if(nbActiveEditNum !== null) { nbActiveEditNum = null; renderNbAndFav(); }
   }
+}
+// 编号允许重复（同一编号可能对应多次试烧），这里只提醒不阻止；
+// 编辑已有记录时要把自己排除掉，不然对着自己的编号也会误报撞号
+function nbModalCheckNumDup() {
+  const hint = document.getElementById('nb-modal-num-dup-hint');
+  const num = document.getElementById('nb-modal-num').value.trim();
+  const editIndexRaw = document.getElementById('nb-modal-edit-index').value;
+  const editIndex = editIndexRaw === '' ? null : +editIndexRaw;
+  const dup = num && notebook.some((r,i) => r.num === num && i !== editIndex);
+  if(!dup) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+  hint.style.display = '';
+  hint.innerHTML = `编号 ${num} 已存在`;
 }
 
 async function confirmNbSave() {
@@ -5134,15 +5159,17 @@ function nbCardHtml(rec, ni, idPrefix) {
         <div class="nb-head-row2">
           <div class="nb-date">${rec.savedAt}</div>
         </div>
-        <div class="nb-actions" id="${idPrefix}-actions-${ni}">
+        <div class="nb-quick-actions">
           ${rec.status==='planned' ? `<button class="nb-load-btn" onclick="markNbDone(${ni})">标记为已烧</button>` : ''}
           <button class="nb-load-btn" onclick="${isComposite ? `openCompositeModalEdit(${ni})` : `openNbModalEdit(${ni})`}">编辑</button>
+          ${!isComposite ? `<button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>` : ''}
+          ${hasBase ? `<button class="nb-load-btn" onclick="openRecipeCalcModal(${ni})" title="只读：仅按比例计算克重，不会修改这条记录">🔒 按此配料</button>` : ''}
+          <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
+        </div>
+        <div class="nb-actions" id="${idPrefix}-actions-${ni}">
           <button class="nb-load-btn" onclick="openShareModal(${ni})">生成分享卡</button>
           ${(hasBase || isComposite) ? `<button class="nb-load-btn" onclick="openRecipeShareModal(${ni})">分享配方</button>` : ''}
-          ${!isComposite ? `<button class="nb-load-btn" onclick="loadNbToCalc(${ni})">载入</button>` : ''}
-          ${hasBase ? `<button class="nb-load-btn" onclick="openRecipeCalcModal(${ni})">按此配料</button>` : ''}
           <button class="nb-load-btn" onclick="openFolderPicker('single', ['${rec.id}'])">移动到…</button>
-          <button class="nb-del-btn" onclick="deleteNb(${ni})">删除</button>
         </div>
       </div>
       <div class="nb-body">
@@ -6453,6 +6480,7 @@ function openBaseNbModal() {
   document.getElementById('nb-modal-edit-index').value = '';
   document.getElementById('nb-modal-glaze-index').value = ''; // 只存基础釉，绝不带 glazes 链
   document.getElementById('nb-modal-num').value = '';
+  nbModalCheckNumDup();
   document.getElementById('nb-modal-name').value = '';
   document.getElementById('nb-modal-note').value = '';
   document.getElementById('nb-modal-planned').checked = false;
