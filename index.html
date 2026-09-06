@@ -1286,7 +1286,10 @@
   </div>
   <div id="auth-status-bar" style="font-family:var(--font-mono);font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:14px;padding-top:8px;position:relative;z-index:1">
     <button id="theme-toggle-btn" onclick="toggleTheme()" title="切换深浅色" style="background:none;border:1px solid var(--line);color:var(--ink-3);border-radius:4px;padding:3px 9px;cursor:pointer;font-family:inherit;font-size:inherit;line-height:1.4">◐</button>
-    <span id="user-email"></span>
+    <span style="display:flex;align-items:center;gap:6px">
+      <span id="user-email-dot" style="display:none;width:9px;height:9px;border-radius:50%;flex-shrink:0"></span>
+      <span id="user-email" style="font-size:13px;font-weight:700;color:var(--ink)"></span>
+    </span>
     <button id="changepw-btn" onclick="openChangePasswordModal()" style="display:none;background:none;border:none;border-bottom:0.5px solid var(--line);color:var(--ink-4);padding:0;cursor:pointer;font-family:var(--font-sans);font-size:11.5px">修改密码</button>
     <button id="signout-btn" onclick="signOut()" style="display:none;background:none;border:none;border-bottom:0.5px solid var(--line);color:var(--ink-4);padding:0;cursor:pointer;font-family:var(--font-sans);font-size:11.5px">退出</button>
   </div>
@@ -1374,7 +1377,7 @@
         <input type="file" id="nb-import-input" accept=".json" style="display:none" onchange="importNotebook(this)">
         <button class="io-btn" id="nb-batch-btn" onclick="toggleNbBatchMode()">☑ 批量</button>
         <button class="io-btn" onclick="openBatchImportModal()">⚏ 批量导入照片</button>
-        <button class="io-btn" onclick="clearDemoData()">✕ 清除示例数据</button>
+        <button class="io-btn" id="clear-demo-btn" onclick="clearDemoData()" style="display:none">✕ 清除示例数据</button>
         <button class="nb-new-btn" onclick="openNbTypeChooser()">＋ 手动新建</button>
       </div>
     </div>
@@ -2123,11 +2126,22 @@ async function confirmChangePassword() {
   }
 }
 
+// 同一邮箱每次都算出同一个色相，多账号切换时色块能帮着一眼分辨"是不是同一个号"，
+// 不依赖去记那串小字邮箱
+function emailAccentColor(email) {
+  let hash = 0;
+  for(let i = 0; i < email.length; i++) hash = (hash * 31 + email.charCodeAt(i)) >>> 0;
+  return `hsl(${hash % 360}, 55%, 45%)`;
+}
+
 sb.auth.onAuthStateChange((event, session) => {
   if (session) {
     currentUserId = session.user.id;
     document.getElementById('auth-modal').classList.remove('open');
-    document.getElementById('user-email').textContent = session.user.email;
+    document.getElementById('user-email').textContent = `当前：${session.user.email}`;
+    const dot = document.getElementById('user-email-dot');
+    dot.style.background = emailAccentColor(session.user.email);
+    dot.style.display = '';
     document.getElementById('signout-btn').style.display = '';
     document.getElementById('changepw-btn').style.display = '';
     boot();
@@ -2137,6 +2151,7 @@ sb.auth.onAuthStateChange((event, session) => {
     renderAuthMode();
     document.getElementById('auth-modal').classList.add('open');
     document.getElementById('user-email').textContent = '';
+    document.getElementById('user-email-dot').style.display = 'none';
     document.getElementById('signout-btn').style.display = 'none';
     document.getElementById('changepw-btn').style.display = 'none';
   }
@@ -3638,6 +3653,9 @@ function switchTab(name, btn) {
 function updateNbBadge() {
   const b = document.getElementById('nb-count-badge');
   if(b) b.textContent = notebook.length > 0 ? `(${notebook.length})` : '';
+  // 清完示例数据后这个按钮就该消失，不然它会一直挂在工具栏里当个点了也没用的死按钮
+  const clearBtn = document.getElementById('clear-demo-btn');
+  if(clearBtn) clearBtn.style.display = notebook.some(r => r.isDemo) ? '' : 'none';
 }
 
 const EFFECT_TAG_OPTIONS = ['亮光','哑光','半哑光/缎面','结晶','开裂','流动','乳浊','其他'];
