@@ -36,7 +36,7 @@ const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
 ## 4. 部署
 
-这是纯静态单文件，不需要服务器。任选一种：
+这是纯静态站点，不需要服务器。页面依赖的两个库（supabase-js、html2canvas）放在 `vendor/` 里随站点一起发布，不走外部 CDN，部署时要把 `vendor/` 一并带上。任选一种：
 
 - **GitHub Pages**：把 `notebook_v6_3.html` 放进一个仓库，Settings → Pages 里指向对应分支/目录
 - **Vercel / Netlify**：直接把这个文件夹拖进去部署，或者连 Git 仓库自动部署

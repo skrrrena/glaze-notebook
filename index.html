@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>釉料配方计算器</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<!-- 两个依赖随站点一起发布（vendor/），不走境外 CDN；版本号写在文件名里，升级时换文件并改这里 -->
+<script src="vendor/supabase-js-2.119.0.js"></script>
+<script src="vendor/html2canvas-1.4.1.min.js"></script>
 <style>
   /* 标本目录 — 色彩沉默：釉色照片是唯一色彩来源，--accent 只用于星标/note/当前记录高亮/效果标签 */
   :root {
