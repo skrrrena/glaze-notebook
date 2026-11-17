@@ -2312,6 +2312,22 @@ async function seedDemoData() {
 }
 
 // ── boot: fetch everything for the signed-in user, then render ──
+function showBootError() {
+  let el = document.getElementById('boot-error');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'boot-error';
+    el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;padding:14px 16px;background:var(--danger,#b3261e);color:#fff;font-size:0.85rem;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap';
+    el.innerHTML = '<span>数据没有加载成功（可能是网络问题）。你的记录没有被改动，请重试。</span><button type="button" style="padding:4px 14px;border:1px solid #fff;background:transparent;color:#fff;border-radius:4px;cursor:pointer;font:inherit" onclick="boot()">重试</button>';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+}
+function hideBootError() {
+  const el = document.getElementById('boot-error');
+  if(el) el.style.display = 'none';
+}
+
 async function boot() {
   const [nbRes, histRes, matRes, fcRes, folderRes, cgRes, clRes] = await Promise.all([
     sb.from('notebook_entries').select('*').order('created_at', {ascending:false}),
@@ -2322,6 +2338,11 @@ async function boot() {
     sb.from('composite_glazes').select('*').order('name'),
     sb.from('composite_layers').select('*').order('layer_order'),
   ]);
+  // 核心表读取失败（断网/超时/服务端错误）时 data 为 null——绝不能把它当成"空账号"继续走下面的
+  // 播种逻辑，否则会往已有数据的账号里重复插入原料库/烧成曲线/示例数据。停下来让用户重试。
+  const coreErr = nbRes.error || histRes.error || matRes.error || fcRes.error;
+  if(coreErr) { console.error('[boot] 数据加载失败', coreErr); showBootError(); return; }
+  hideBootError();
   notebook = (nbRes.data||[]).map(rowToNotebook);
   history = (histRes.data||[]).map(rowToHistory);
   materials = (matRes.data||[]).map(rowToMaterial);
@@ -2626,7 +2647,7 @@ function renderShareHeroPicker(rec) {
   const photos = rec.photos || [];
   const currentPath = rec.shareImage?.path || null;
   wrap.innerHTML = photos.map((p,i) => `
-    <button class="sharemodal-hero-thumb ${p.path===currentPath?'active':''}" onclick="pickShareHeroFromPhoto('${rec.id}',${i})" title="设为封面"><img src="${p.src||''}"></button>
+    <button class="sharemodal-hero-thumb ${p.path===currentPath?'active':''}" onclick="pickShareHeroFromPhoto('${rec.id}',${i})" title="设为封面"><img src="${escapeHtml(p.src||'')}"></button>
   `).join('')
   + `<button class="sharemodal-hero-upload" onclick="triggerShareHeroUpload('${rec.id}')" title="上传新图">＋</button>`
   + (rec.shareImage ? `<button class="sharemodal-hero-remove" onclick="removeShareHero('${rec.id}')" title="移除封面">移除</button>` : '');
@@ -2666,16 +2687,16 @@ function buildShareCardInnerHtml(rec, format, heroHeightPx, heroImgStyle) {
   // math independently of the live browser, and fractional results there are a known source of
   // a 1px seam through the exported image.
   const heroHtml = rec.shareImage?.src
-    ? `<div class="share-hero-img" style="background-image:url('${rec.shareImage.src.replace(/'/g, "%27")}');${heroImgStyle||''}"></div>`
+    ? `<div class="share-hero-img" style="background-image:url('${escapeHtml(rec.shareImage.src.replace(/'/g, "%27"))}');${heroImgStyle||''}"></div>`
     : `<div class="share-hero-empty">未设置封面图</div>`;
   const heroStyle = (format !== 'square' && heroHeightPx) ? ` style="height:${heroHeightPx}px"` : '';
   const effectClass = format==='square' ? 'share-hero-effect-tag' : 'share-effect-tag';
   const processClass = format==='square' ? 'share-hero-process-tag' : 'share-process-tag';
   const tagsHtml = (effectTags.length || fc)
-    ? `${effectTags.map(t=>`<span class="${effectClass}">◇ ${t}</span>`).join('')}${fc ? `<span class="${processClass}">${fc.name}</span>` : ''}`
+    ? `${effectTags.map(t=>`<span class="${effectClass}">◇ ${escapeHtml(t)}</span>`).join('')}${fc ? `<span class="${processClass}">${escapeHtml(fc.name)}</span>` : ''}`
     : '';
   const sigHtml = sigShow && (sigAuthor || sigYear)
-    ? `<div class="share-signature">— ${[sigAuthor,sigYear].filter(Boolean).join(' · ')}</div>` : '';
+    ? `<div class="share-signature">— ${escapeHtml([sigAuthor,sigYear].filter(Boolean).join(' · '))}</div>` : '';
 
   if(format === 'square') {
     return `
@@ -2683,9 +2704,9 @@ function buildShareCardInnerHtml(rec, format, heroHeightPx, heroImgStyle) {
         ${heroHtml}
         <div class="share-hero-gradient"></div>
         <div class="share-hero-overlay">
-          ${rec.num ? `<div class="share-hero-num">${rec.num}</div>` : ''}
-          <div class="share-hero-name">${rec.name}</div>
-          ${englishName ? `<div class="share-hero-en">${englishName}</div>` : ''}
+          ${rec.num ? `<div class="share-hero-num">${escapeHtml(rec.num)}</div>` : ''}
+          <div class="share-hero-name">${escapeHtml(rec.name)}</div>
+          ${englishName ? `<div class="share-hero-en">${escapeHtml(englishName)}</div>` : ''}
           ${tagsHtml ? `<div class="share-hero-tags">${tagsHtml}</div>` : ''}
         </div>
       </div>`;
@@ -2699,19 +2720,19 @@ function buildShareCardInnerHtml(rec, format, heroHeightPx, heroImgStyle) {
       ${heroHtml}
       <div class="share-hero-gradient"></div>
       <div class="share-hero-overlay">
-        ${rec.num ? `<div class="share-hero-num">${rec.num}</div>` : ''}
-        <div class="share-hero-name">${rec.name}</div>
-        ${englishName ? `<div class="share-hero-en">${englishName}</div>` : ''}
+        ${rec.num ? `<div class="share-hero-num">${escapeHtml(rec.num)}</div>` : ''}
+        <div class="share-hero-name">${escapeHtml(rec.name)}</div>
+        ${englishName ? `<div class="share-hero-en">${escapeHtml(englishName)}</div>` : ''}
       </div>
     </div>
     <div class="share-body">
       ${tagsHtml ? `<div class="share-tags">${tagsHtml}</div>` : ''}
       <div>
         <div class="share-sect-label">配方</div>
-        <div class="share-formula-row">${baseStr}</div>
-        ${addStr ? `<div class="share-formula-row">${addStr}</div>` : ''}
+        <div class="share-formula-row">${escapeHtml(baseStr)}</div>
+        ${addStr ? `<div class="share-formula-row">${escapeHtml(addStr)}</div>` : ''}
       </div>
-      ${note ? `<div class="share-note">${note}</div>` : ''}
+      ${note ? `<div class="share-note">${escapeHtml(note)}</div>` : ''}
       ${sigHtml}
     </div>`;
 }
@@ -2825,10 +2846,10 @@ function closeCompareModal(e) {
 // when the values actually differ, never when a row is entirely empty.
 function _compareCellsHtml(values) {
   const allSame = values.every(v => v === values[0]);
-  return values.map(v => `<div class="compare-cell ${!allSame && v!==''?'compare-cell-diff':''}">${v || '—'}</div>`).join('');
+  return values.map(v => `<div class="compare-cell ${!allSame && v!==''?'compare-cell-diff':''}">${escapeHtml(v || '—')}</div>`).join('');
 }
 function _compareRowHtml(label, values) {
-  return `<div class="compare-row"><div class="compare-cell compare-cell-label">${label}</div>${_compareCellsHtml(values)}</div>`;
+  return `<div class="compare-row"><div class="compare-cell compare-cell-label">${escapeHtml(label)}</div>${_compareCellsHtml(values)}</div>`;
 }
 function _compareSectionLabel(label) {
   return `<div class="compare-section-label">${label}</div>`;
@@ -2842,8 +2863,8 @@ function buildCompareTableHtml(records) {
   // header row: name/num + representative photo
   rows += `<div class="compare-row"><div class="compare-cell compare-cell-label"></div>${records.map(r => {
     const p = (r.photos||[])[0];
-    const thumb = p?.src ? `<img class="compare-thumb" src="${p.src}">` : `<div class="compare-thumb-empty">无照片</div>`;
-    return `<div class="compare-cell compare-col-head">${thumb}<div>${r.num ? `<span style="color:var(--ink3);font-family:var(--font-mono);font-size:0.8rem">${r.num}　</span>` : ''}${r.name}</div></div>`;
+    const thumb = p?.src ? `<img class="compare-thumb" src="${escapeHtml(p.src)}">` : `<div class="compare-thumb-empty">无照片</div>`;
+    return `<div class="compare-cell compare-col-head">${thumb}<div>${r.num ? `<span style="color:var(--ink3);font-family:var(--font-mono);font-size:0.8rem">${escapeHtml(r.num)}　</span>` : ''}${escapeHtml(r.name)}</div></div>`;
   }).join('')}</div>`;
 
   rows += _compareRowHtml('效果标签', records.map(r => (r.effectTags||[]).join('、')));
@@ -2855,7 +2876,7 @@ function buildCompareTableHtml(records) {
   rows += _compareSectionLabel('基釉');
   if(baseAllSame) {
     const summary = (records[0].baseIngredients||[]).map(i=>`${i.name} ${i.parts}`).join('　');
-    rows += `<div class="compare-row"><div class="compare-cell compare-cell-label"></div><div class="compare-cell compare-collapsed-note">基釉相同：${summary}</div></div>`;
+    rows += `<div class="compare-row"><div class="compare-cell compare-cell-label"></div><div class="compare-cell compare-collapsed-note">基釉相同：${escapeHtml(summary)}</div></div>`;
   } else {
     const allNames = [...new Set(records.flatMap(r => (r.baseIngredients||[]).map(i=>i.name)))];
     allNames.forEach(name => {
@@ -2928,11 +2949,11 @@ function renderPhotoGallery(photos, table, id, styleClass, triggerFn, deleteFn, 
   _photoRegistry[regKey] = photos;
 
   const thumbs = photos.map((p, i) => {
-    const cap = (p.caption||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const cap = escapeHtml(p.caption||'');
     return `
     <div class="photo-item">
       <div class="photo-thumb-wrap" onclick="_openPhotoLb('${regKey}',${i})" title="点击查看大图">
-        <img src="${p.src||''}" alt="${cap}">
+        <img src="${escapeHtml(p.src||'')}" alt="${cap}">
         <button class="photo-del-btn" onclick="event.stopPropagation();${deleteFn}('${id}',${i})" title="删除">×</button>
       </div>
       <input class="photo-caption-input" type="text" value="${cap}" placeholder="图片名称…"
@@ -3159,7 +3180,7 @@ function renderChemPanel(baseIngredients, additivesObj, collected) {
     const msg = r.reason === 'market' ? r.detail
       : r.reason === 'no_flux' ? '配方中没有可识别的熔剂氧化物，无法归一化计算'
       : r.reason === 'missing_material'
-        ? '含未知/成分不全的原料：' + r.detail.map(m => `${m.name}${m.reason==='not_found'?'(原料库中未找到)':'(成分数据不全)'}`).join('、')
+        ? '含未知/成分不全的原料：' + r.detail.map(m => `${escapeHtml(m.name)}${m.reason==='not_found'?'(原料库中未找到)':'(成分数据不全)'}`).join('、')
         : '无法计算';
     return `<details class="chem-panel"><summary class="chem-summary">⚠️ 化学分析（不可用）</summary>
       <div class="chem-warning">${msg}</div>
@@ -3172,10 +3193,10 @@ function renderChemPanel(baseIngredients, additivesObj, collected) {
   const formRows = Object.entries(r.unity).filter(([ox])=>FORMER_OXIDES.has(ox)).map(([ox,v])=>oxideRow(ox,v)).join('');
   const otherRows = Object.entries(r.unity).filter(([ox])=>!FLUX_OXIDES.has(ox)&&!AMPHOTERIC_OXIDES.has(ox)&&!FORMER_OXIDES.has(ox)).map(([ox,v])=>oxideRow(ox,v)).join('');
 
-  const colorantRows = r.colorants.map(c=>`<div class="chem-oxide-row"><span>${c.name}</span><span>外加 ${(+c.pct).toFixed(4)}%</span></div>`).join('');
+  const colorantRows = r.colorants.map(c=>`<div class="chem-oxide-row"><span>${escapeHtml(c.name)}</span><span>外加 ${(+c.pct).toFixed(4)}%</span></div>`).join('');
   const opacifierRows = r.opacifiers.map(o=>{
     const zr = o.material.oxides.ZrO2 ? ` (其中 ZrO2 约 ${(o.pct * o.material.oxides.ZrO2/100).toFixed(4)}%)` : '';
-    return `<div class="chem-oxide-row"><span>${o.name}</span><span>外加 ${(+o.pct).toFixed(4)}%${zr}</span></div>`;
+    return `<div class="chem-oxide-row"><span>${escapeHtml(o.name)}</span><span>外加 ${(+o.pct).toFixed(4)}%${zr}</span></div>`;
   }).join('');
 
   const flux = r.fluxBreakdown;
@@ -3197,7 +3218,7 @@ function renderChemPanel(baseIngredients, additivesObj, collected) {
       <div class="chem-ratio">${fluxSummary}</div>
       ${colorantRows ? `<div class="chem-col-title" style="margin-top:8px">着色剂外加%</div>${colorantRows}` : ''}
       ${opacifierRows ? `<div class="chem-col-title" style="margin-top:8px">乳浊剂外加%</div>${opacifierRows}` : ''}
-      ${r.reliabilityNotes.length ? `<div class="chem-warning" style="margin-top:8px">${r.reliabilityNotes.join('<br>')}</div>` : ''}
+      ${r.reliabilityNotes.length ? `<div class="chem-warning" style="margin-top:8px">${r.reliabilityNotes.map(escapeHtml).join('<br>')}</div>` : ''}
       ${collected
         ? `<div class="chem-warning" style="margin-top:6px">外部采集，仅供参考，不进入你的校准数据集</div>`
         : `<div class="chem-note" style="margin-top:6px;display:block">化学指标仅供比较，效果预判需先完成校准（见"规律校准"标签页）</div>`}
@@ -3232,7 +3253,7 @@ function renderMaterials() {
     return `
     <div class="mat-card">
       <div class="mat-row">
-        <strong class="mat-name">${m.name}</strong>
+        <strong class="mat-name">${escapeHtml(m.name)}</strong>
         <select onchange="updateMaterialField('${m.id}','role',this.value)">
           ${['base','colorant','opacifier','surface'].map(r=>`<option value="${r}" ${m.role===r?'selected':''}>${r}</option>`).join('')}
         </select>
@@ -3243,12 +3264,12 @@ function renderMaterials() {
       </div>
       <div class="mat-row">
         <label style="font-size:0.7rem;color:var(--ink3)">氧化物(重量% 格式 SiO2:60.08, ...)</label>
-        <input type="text" value="${oxideStr}" style="flex:1;font-family:var(--font-mono);font-size:0.75rem"
+        <input type="text" value="${escapeHtml(oxideStr)}" style="flex:1;font-family:var(--font-mono);font-size:0.75rem"
           onchange="updateMaterialField('${m.id}','oxides', parseOxideInput(this.value))">
         <label style="font-size:0.7rem;color:var(--ink3)">LOI%</label>
-        <input type="number" step="0.1" value="${m.loi}" style="width:70px" onchange="updateMaterialField('${m.id}','loi',parseFloat(this.value)||0)">
+        <input type="number" step="0.1" value="${escapeHtml(m.loi)}" style="width:70px" onchange="updateMaterialField('${m.id}','loi',parseFloat(this.value)||0)">
       </div>
-      ${m.note ? `<div class="mat-note">${m.note}</div>` : ''}
+      ${m.note ? `<div class="mat-note">${escapeHtml(m.note)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -3282,7 +3303,7 @@ function renderFiringCurveChart(curve) {
     const color = b.type === 'crash' ? 'var(--danger)' : (b.type === 'hold' ? 'var(--nb)' : 'var(--ink2)');
     const width = (b.type === 'crash' || b.type === 'hold') ? 3 : 1.5;
     segEls += `<line x1="${x(a.t).toFixed(1)}" y1="${y(a.temp).toFixed(1)}" x2="${x(b.t).toFixed(1)}" y2="${y(b.temp).toFixed(1)}" stroke="${color}" stroke-width="${width}" />`;
-    if(b.label) segEls += `<text x="${x(b.t).toFixed(1)}" y="${(y(b.temp)-8).toFixed(1)}" font-size="10" fill="${color}" text-anchor="middle">${b.label}</text>`;
+    if(b.label) segEls += `<text x="${x(b.t).toFixed(1)}" y="${(y(b.temp)-8).toFixed(1)}" font-size="10" fill="${color}" text-anchor="middle">${escapeHtml(b.label)}</text>`;
   }
   const dots = pts.map(p=>`<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.temp).toFixed(1)}" r="2.5" fill="var(--ink3)" />`).join('');
   const axisLabels = `
@@ -3305,15 +3326,15 @@ function renderFiringCurves() {
   wrap.innerHTML = firingCurves.map(c => `
     <div class="mat-card">
       <div class="mat-row">
-        <strong class="mat-name">${c.name}</strong>
-        <span style="font-size:0.72rem;color:var(--ink3)">峰值 ${c.peakTemp ?? '—'}℃ · 全程 ${c.totalMinutes ?? '—'} min · ${c.atmosphere}</span>
+        <strong class="mat-name">${escapeHtml(c.name)}</strong>
+        <span style="font-size:0.72rem;color:var(--ink3)">峰值 ${escapeHtml(c.peakTemp ?? '—')}℃ · 全程 ${escapeHtml(c.totalMinutes ?? '—')} min · ${escapeHtml(c.atmosphere)}</span>
         <button class="btn-ghost" style="width:auto;margin:0 0 0 auto;padding:3px 10px" onclick="openFcEditModal('${c.id}')">编辑</button>
         <button class="btn-icon" onclick="deleteFiringCurve('${c.id}')" title="删除">×</button>
       </div>
       ${renderFiringCurveChart(c)}
       <div class="mat-row">
         <label style="font-size:0.7rem;color:var(--ink3)">备注</label>
-        <input type="text" value="${c.note}" style="flex:1;font-size:0.75rem" onchange="updateFiringCurveField('${c.id}','note',this.value)">
+        <input type="text" value="${escapeHtml(c.note)}" style="flex:1;font-size:0.75rem" onchange="updateFiringCurveField('${c.id}','note',this.value)">
       </div>
     </div>`).join('') || `<div class="empty-result" style="padding:20px 0"><div class="big">窑</div>暂无烧成曲线</div>`;
 }
@@ -3403,7 +3424,7 @@ function renderFcEditSegments() {
       <input type="number" value="${seg.targetTemp}" title="目标温度℃" oninput="fcSegUpdate(${i},'targetTemp',this.value)">
       <input type="number" value="${seg.minutes}" title="时长(min)" oninput="fcSegUpdate(${i},'minutes',this.value)">
       <input type="number" value="${isHold?0:seg.rate}" title="速率(℃/min)" step="0.1" ${isHold?'disabled':''} oninput="fcSegUpdate(${i},'rate',this.value)">
-      <input type="text" value="${(seg.label||'').replace(/"/g,'&quot;')}" placeholder="标签，选填" oninput="fcSegUpdate(${i},'label',this.value)">
+      <input type="text" value="${escapeHtml(seg.label||'')}" placeholder="标签，选填" oninput="fcSegUpdate(${i},'label',this.value)">
       <button class="btn-icon" ${i===0?'disabled style="opacity:0.3"':''} onclick="fcMoveSegment(${i},-1)" title="上移">↑</button>
       <button class="btn-icon" ${i===fcEditSegments.length-1?'disabled style="opacity:0.3"':''} onclick="fcMoveSegment(${i},1)" title="下移">↓</button>
       <button class="btn-icon" onclick="fcRemoveSegment(${i})" title="删除">×</button>
@@ -3541,7 +3562,7 @@ function calibRecordRow(rec, seger) {
   const zn = u.ZnO!=null ? u.ZnO.toFixed(3) : '—';
   const si = u.SiO2!=null ? u.SiO2.toFixed(3) : '—';
   const sga = seger.ratios.sga!=null ? seger.ratios.sga.toFixed(2) : '—';
-  return `<div class="chem-oxide-row"><span>[${rec.num||'—'}] ${rec.name}</span><span>Al2O3 ${al} · ZnO ${zn} · SiO2 ${si} · Si:Al ${sga}</span></div>`;
+  return `<div class="chem-oxide-row"><span>[${escapeHtml(rec.num||'—')}] ${escapeHtml(rec.name)}</span><span>Al2O3 ${al} · ZnO ${zn} · SiO2 ${si} · Si:Al ${sga}</span></div>`;
 }
 
 function renderCalibration() {
@@ -3618,7 +3639,7 @@ function renderCalibration() {
   sections.push(`
     <div class="mat-card">
       <div class="chem-col-title">假设 A：哑光效果来自 BaO+MgO，而非硅铝比</div>
-      ${[...matteItems, ...glossItems].map(x => `<div class="chem-oxide-row"><span>[${x.rec.num}] ${x.rec.name}<span class="chem-note" style="display:inline;margin-left:6px">(${x.effect.tags.join('/')}，${x.effect.source})</span></span><span>BaO+MgO ${((x.seger.unity.BaO||0)+(x.seger.unity.MgO||0)).toFixed(3)} · Al2O3 ${(x.seger.unity.Al2O3||0).toFixed(3)}</span></div>`).join('')}
+      ${[...matteItems, ...glossItems].map(x => `<div class="chem-oxide-row"><span>[${escapeHtml(x.rec.num)}] ${escapeHtml(x.rec.name)}<span class="chem-note" style="display:inline;margin-left:6px">(${escapeHtml(x.effect.tags.join('/'))}，${escapeHtml(x.effect.source)})</span></span><span>BaO+MgO ${((x.seger.unity.BaO||0)+(x.seger.unity.MgO||0)).toFixed(3)} · Al2O3 ${(x.seger.unity.Al2O3||0).toFixed(3)}</span></div>`).join('')}
       <div class="chem-ratio">${hypA}</div>
     </div>`);
 
@@ -3687,7 +3708,7 @@ function filterByTags(records, selectedTags, mode) {
 }
 function firingCurveOptionsHtml(selectedId) {
   return '<option value="">（未分类 / 未知）</option>' +
-    firingCurves.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name}</option>`).join('');
+    firingCurves.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===selectedId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
 }
 function effectTagCheckboxesHtml(selected) {
   selected = selected || [];
@@ -3726,7 +3747,7 @@ function openNbModal(glazeIndex, glazeState) {
   if(glazeIndex !== null) {
     nbModalBase = null;
     baseWrap.innerHTML = baseIngredients.map(i =>
-      `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+      `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${escapeHtml(i.name)} ${escapeHtml(i.parts)}</span>`
     ).join('');
     baseAddBtn.style.display = 'none';
   } else {
@@ -3770,7 +3791,7 @@ function openNbModalEdit(ni) {
   const baseWrap = document.getElementById('nb-modal-base-wrap');
   document.getElementById('nb-modal-base-addbtn').style.display = 'none';
   baseWrap.innerHTML = (rec.baseIngredients||[]).map(i =>
-    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${escapeHtml(i.name)} ${escapeHtml(i.parts)}</span>`
   ).join('');
 
   nbModalAdditives = Object.entries(rec.additives||{}).map(([name,pct])=>({name,pct}));
@@ -3786,7 +3807,7 @@ function renderNbModalAdditives() {
   const w = document.getElementById('nb-modal-add-wrap');
   w.innerHTML = nbModalAdditives.map((a,i) => `
     <div class="nb-additive-edit-row">
-      <input type="text" value="${a.name}" placeholder="添加剂名称" oninput="nbModalAdditives[${i}].name=this.value">
+      <input type="text" value="${escapeHtml(a.name)}" placeholder="添加剂名称" oninput="nbModalAdditives[${i}].name=this.value">
       <input type="number" value="${a.pct}" min="0" step="0.001" placeholder="外加%" oninput="nbModalAdditives[${i}].pct=parseFloat(this.value)||0">
       <button class="btn-icon" onclick="nbModalAdditives.splice(${i},1);renderNbModalAdditives()" title="删除">×</button>
     </div>
@@ -3802,7 +3823,7 @@ function renderNbModalBase() {
   const w = document.getElementById('nb-modal-base-wrap');
   w.innerHTML = nbModalBase.map((ing,i) => `
     <div class="nb-additive-edit-row">
-      <input type="text" value="${ing.name}" placeholder="原料名称" oninput="nbModalBase[${i}].name=this.value">
+      <input type="text" value="${escapeHtml(ing.name)}" placeholder="原料名称" oninput="nbModalBase[${i}].name=this.value">
       <input type="number" value="${ing.parts}" min="0" step="0.1" placeholder="份数" oninput="nbModalBase[${i}].parts=parseFloat(this.value)||0">
       <button class="btn-icon" onclick="nbModalBase.splice(${i},1);renderNbModalBase()" title="删除">×</button>
     </div>
@@ -3838,7 +3859,7 @@ function nbModalCheckNumDup() {
   const dup = num && notebook.some((r,i) => r.num === num && i !== editIndex);
   if(!dup) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
   hint.style.display = '';
-  hint.innerHTML = `编号 ${num} 已存在`;
+  hint.innerHTML = `编号 ${escapeHtml(num)} 已存在`;
 }
 
 async function confirmNbSave() {
@@ -3977,7 +3998,7 @@ function renderCmBase() {
   const w = document.getElementById('cm-base-wrap');
   w.innerHTML = cmBase.map((ing,i) => `
     <div class="nb-additive-edit-row">
-      <input type="text" value="${ing.name}" placeholder="原料名称" oninput="cmBase[${i}].name=this.value">
+      <input type="text" value="${escapeHtml(ing.name)}" placeholder="原料名称" oninput="cmBase[${i}].name=this.value">
       <input type="number" value="${ing.parts}" min="0" step="0.1" placeholder="份数" oninput="cmBase[${i}].parts=parseFloat(this.value)||0">
       <button class="btn-icon" onclick="cmBase.splice(${i},1);renderCmBase()" title="删除">×</button>
     </div>
@@ -3988,7 +4009,7 @@ function renderCmAdditives() {
   const w = document.getElementById('cm-add-wrap');
   w.innerHTML = cmAdditives.map((a,i) => `
     <div class="nb-additive-edit-row">
-      <input type="text" value="${a.name}" placeholder="添加剂名称" oninput="cmAdditives[${i}].name=this.value">
+      <input type="text" value="${escapeHtml(a.name)}" placeholder="添加剂名称" oninput="cmAdditives[${i}].name=this.value">
       <input type="number" value="${a.pct}" min="0" step="0.001" placeholder="外加%" oninput="cmAdditives[${i}].pct=parseFloat(this.value)||0">
       <button class="btn-icon" onclick="cmAdditives.splice(${i},1);renderCmAdditives()" title="删除">×</button>
     </div>
@@ -4070,7 +4091,7 @@ function closeCompositeModal(e) {
 function compositeGlazeOptionsHtml(selectedId) {
   if(compositeGlazes.length === 0) return '<option value="">（釉库是空的，先去管理釉库添加）</option>';
   return '<option value="">请选择…</option>' +
-    compositeGlazes.map(g=>`<option value="${g.id}" ${g.id===selectedId?'selected':''}>${g.name}${g.brand?' · '+g.brand:''}</option>`).join('');
+    compositeGlazes.map(g=>`<option value="${g.id}" ${g.id===selectedId?'selected':''}>${escapeHtml(g.name)}${g.brand?' · '+escapeHtml(g.brand):''}</option>`).join('');
 }
 function glazeLibraryEmptyHintHtml() {
   if(compositeGlazes.length > 0) return '';
@@ -4082,7 +4103,7 @@ function renderCompositeLayers() {
     <div class="nb-layer-edit-row">
       <span class="nb-layer-order-num">${i+1}</span>
       <select onchange="compositeModalLayers[${i}].glazeId=this.value">${compositeGlazeOptionsHtml(l.glazeId)}</select>
-      <input type="text" value="${(l.application||'').replace(/"/g,'&quot;')}" placeholder="施釉方式" oninput="compositeModalLayers[${i}].application=this.value">
+      <input type="text" value="${escapeHtml(l.application||'')}" placeholder="施釉方式" oninput="compositeModalLayers[${i}].application=this.value">
       <input type="number" class="nb-layer-coats-input" min="1" step="1" value="${l.coats||1}" title="遍数" oninput="compositeModalLayers[${i}].coats=parseInt(this.value)||1">
       <button class="btn-icon" ${i===0?'disabled style="opacity:0.3"':''} onclick="compositeMoveLayer(${i},-1)" title="上移">↑</button>
       <button class="btn-icon" ${i===compositeModalLayers.length-1?'disabled style="opacity:0.3"':''} onclick="compositeMoveLayer(${i},1)" title="下移">↓</button>
@@ -4182,8 +4203,8 @@ function renderGlazeLibraryList() {
   }
   w.innerHTML = compositeGlazes.map(g => `
     <div class="glazelib-row">
-      <span>${g.name}${g.brand?` <span style="color:var(--ink3)">· ${g.brand}</span>`:''}${g.colorFamily?` <span style="color:var(--ink3)">· ${g.colorFamily}</span>`:''}</span>
-      <span style="color:var(--ink3);font-family:var(--font-mono)">${g.productCode||''}</span>
+      <span>${escapeHtml(g.name)}${g.brand?` <span style="color:var(--ink3)">· ${escapeHtml(g.brand)}</span>`:''}${g.colorFamily?` <span style="color:var(--ink3)">· ${escapeHtml(g.colorFamily)}</span>`:''}</span>
+      <span style="color:var(--ink3);font-family:var(--font-mono)">${escapeHtml(g.productCode||'')}</span>
       <button class="btn-icon" onclick="glazeLibraryDelete('${g.id}')" title="删除">×</button>
     </div>
   `).join('');
@@ -4196,7 +4217,7 @@ function glazeLibraryCheckDup() {
   const dup = name && compositeGlazes.find(g => g.name === name);
   if(!dup) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
   hint.style.display = '';
-  hint.innerHTML = `库里已有"${name}"`
+  hint.innerHTML = `库里已有"${escapeHtml(name)}"`
     + `<button type="button" onclick="glazeLibraryUseExisting()">使用已有</button>`
     + `<button type="button" onclick="glazeLibraryKeepNew()">仍要新建</button>`;
 }
@@ -4286,7 +4307,6 @@ function renderGlazeTree(rec) {
     if (!childrenOf.has(p)) childrenOf.set(p, []);
     childrenOf.get(p).push(gi);
   });
-  const escAttr = s => String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
   const composition = formatIngredients(rec.baseIngredients);
   const baseLabel = `基础釉：${composition}`;
   // 能推断出"这份基釉其实就是配方本里另一条(无衍生记录的)原始基釉"时，
@@ -4303,8 +4323,8 @@ function renderGlazeTree(rec) {
     const kidsHtml = kids.length ? `<ul>${kids.map(renderNode).join('')}</ul>` : '';
     if (issue) {
       return `<li>
-        <div class="glaze-tree-node glaze-tree-issue" title="⚠ ${escAttr(issue)}">
-          ${g.name || '(未命名)'} <span class="glaze-tree-amount">⚠ ${issue}</span>
+        <div class="glaze-tree-node glaze-tree-issue" title="⚠ ${escapeHtml(issue)}">
+          ${escapeHtml(g.name || '(未命名)')} <span class="glaze-tree-amount">⚠ ${escapeHtml(issue)}</span>
         </div>
         ${kidsHtml}
       </li>`;
@@ -4318,12 +4338,12 @@ function renderGlazeTree(rec) {
     const missing = targetIdx === -1;
     const active = nbActiveEditNum !== null && g.name === nbActiveEditNum;
     const cls = [missing ? 'glaze-tree-missing' : '', active ? 'glaze-tree-active' : ''].filter(Boolean).join(' ');
-    const clickAttr = missing ? '' : ` onclick="jumpToNbByLabel('${escAttr(g.name)}')"`;
+    const clickAttr = missing ? '' : ` onclick="jumpToNbByLabel(${escJsArg(g.name)})"`;
     const tip = missing ? `配方本中未找到「${g.name}」对应的记录` : '点击跳转到对应记录';
-    const noteHtml = g.note ? `<span class="glaze-tree-note">📝 ${escAttr(g.note)}</span>` : '';
+    const noteHtml = g.note ? `<span class="glaze-tree-note">📝 ${escapeHtml(g.note)}</span>` : '';
     return `<li>
-      <div class="glaze-tree-node ${cls}"${clickAttr} title="${escAttr(tip)}">
-        ${g.name || '(未命名)'} ← 取自 ${escAttr(parentLabel)} <span class="glaze-tree-amount">· ${amountLabel}${additivesLabel}</span>
+      <div class="glaze-tree-node ${cls}"${clickAttr} title="${escapeHtml(tip)}">
+        ${escapeHtml(g.name || '(未命名)')} ← 取自 ${escapeHtml(parentLabel)} <span class="glaze-tree-amount">· ${escapeHtml(amountLabel)}${escapeHtml(additivesLabel)}</span>
       </div>
       ${noteHtml}
       ${kidsHtml}
@@ -4332,7 +4352,7 @@ function renderGlazeTree(rec) {
   const roots = childrenOf.get(null) || []; // null = 本记录基釉，非缺失值
   const rootLabel = ownerLabel ? `取自 ${ownerLabel}` : baseLabel;
   const rootHtml = roots.length
-    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="${escAttr(composition)}">${escAttr(rootLabel)}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
+    ? `<ul><li><div class="glaze-tree-node glaze-tree-root" title="${escapeHtml(composition)}">${escapeHtml(rootLabel)}</div><ul>${roots.map(renderNode).join('')}</ul></li></ul>`
     : '';
   const orphanHtml = orphanIdx.length ? `<ul>${orphanIdx.map(renderNode).join('')}</ul>` : '';
   if (!rootHtml && !orphanHtml) return '';
@@ -4433,7 +4453,7 @@ let batchSaving = false;
 
 function batchFolderOptionsHtml(selectedId) {
   let html = `<option value="" ${!selectedId?'selected':''}>未分类</option>`;
-  html += folders.map(f => `<option value="${f.id}" ${f.id===selectedId?'selected':''}>${f.name}</option>`).join('');
+  html += folders.map(f => `<option value="${f.id}" ${f.id===selectedId?'selected':''}>${escapeHtml(f.name)}</option>`).join('');
   return html;
 }
 
@@ -4635,7 +4655,7 @@ function batchGroupLayersHtml(gi) {
     <div class="nb-layer-edit-row">
       <span class="nb-layer-order-num">${i+1}</span>
       <select onchange="batchGroups[${gi}].layers[${i}].glazeId=this.value">${compositeGlazeOptionsHtml(l.glazeId)}</select>
-      <input type="text" value="${(l.application||'').replace(/"/g,'&quot;')}" placeholder="施釉方式" oninput="batchGroups[${gi}].layers[${i}].application=this.value">
+      <input type="text" value="${escapeHtml(l.application||'')}" placeholder="施釉方式" oninput="batchGroups[${gi}].layers[${i}].application=this.value">
       <input type="number" class="nb-layer-coats-input" min="1" step="1" value="${l.coats||1}" title="遍数" oninput="batchGroups[${gi}].layers[${i}].coats=parseInt(this.value)||1">
       <button class="btn-icon" ${i===0?'disabled style="opacity:0.3"':''} onclick="batchMoveLayer(${gi},${i},-1)" title="上移">↑</button>
       <button class="btn-icon" ${i===g.layers.length-1?'disabled style="opacity:0.3"':''} onclick="batchMoveLayer(${gi},${i},1)" title="下移">↓</button>
@@ -4692,15 +4712,15 @@ function renderBatchStep3() {
         <div class="batch-group-thumbstrip" style="margin-bottom:10px">
           ${photos.map((f,pi) => `<div class="batch-group-thumb ${pi===0?'cover':''}"><img src="${f.url}"></div>`).join('')}
         </div>
-        <input type="text" placeholder="未命名试片 · 导入 ${today}（留空则用此兜底名）" maxlength="60" value="${(g.name||'').replace(/"/g,'&quot;')}" oninput="batchGroups[${gi}].name=this.value">
-        <textarea placeholder="备注" oninput="batchGroups[${gi}].note=this.value" style="margin-top:6px">${g.note||''}</textarea>
+        <input type="text" placeholder="未命名试片 · 导入 ${today}（留空则用此兜底名）" maxlength="60" value="${escapeHtml(g.name||'')}" oninput="batchGroups[${gi}].name=this.value">
+        <textarea placeholder="备注" oninput="batchGroups[${gi}].note=this.value" style="margin-top:6px">${escapeHtml(g.note||'')}</textarea>
         <div class="nbmodal-row" style="margin-top:6px">
           <span style="font-size:0.72rem;color:var(--ink3);align-self:center">泥料</span>
-          <input type="text" placeholder="选填" value="${(g.clayBody||'').replace(/"/g,'&quot;')}" oninput="batchGroups[${gi}].clayBody=this.value">
+          <input type="text" placeholder="选填" value="${escapeHtml(g.clayBody||'')}" oninput="batchGroups[${gi}].clayBody=this.value">
         </div>
         <div class="nbmodal-row">
           <span style="font-size:0.72rem;color:var(--ink3);align-self:center">烧成</span>
-          <input type="text" placeholder="选填" value="${(g.firing||'').replace(/"/g,'&quot;')}" oninput="batchGroups[${gi}].firing=this.value">
+          <input type="text" placeholder="选填" value="${escapeHtml(g.firing||'')}" oninput="batchGroups[${gi}].firing=this.value">
         </div>
         ${batchEntryType==='composite_test' ? `
         <div class="field-label" style="margin-top:8px">叠釉（底→面）</div>
@@ -4796,7 +4816,7 @@ function renderNbFolderBar() {
     .concat(folders.map(f => {
       const count = notebook.filter(r => r.folderId === f.id).length;
       const active = nbActiveFolderId === f.id;
-      return `<button class="nb-folder-pill ${active?'active':''}" onclick="selectNbFolder('${f.id}')">${f.name} (${count})</button>`;
+      return `<button class="nb-folder-pill ${active?'active':''}" onclick="selectNbFolder('${f.id}')">${escapeHtml(f.name)} (${count})</button>`;
     }));
   if(unfiledCount > 0 || folders.length === 0) {
     pills.push(`<button class="nb-folder-pill ${nbActiveFolderId===NB_UNFILED?'active':''}" onclick="selectNbFolder('${NB_UNFILED}')">未分类 (${unfiledCount})</button>`);
@@ -4843,7 +4863,7 @@ function renderFolderPickerBody() {
   const options = [{ id: null, name: '未分类' }, ...folders];
   body.innerHTML = `
     <div class="folderpicker-list">
-      ${options.map(f => `<div class="folderpicker-row" onclick="pickFolderPickerTarget(${f.id===null?'null':`'${f.id}'`})"><span>${f.name}</span></div>`).join('')}
+      ${options.map(f => `<div class="folderpicker-row" onclick="pickFolderPickerTarget(${f.id===null?'null':`'${f.id}'`})"><span>${escapeHtml(f.name)}</span></div>`).join('')}
     </div>`;
 }
 async function pickFolderPickerTarget(folderId) {
@@ -4858,9 +4878,9 @@ async function pickFolderPickerTarget(folderId) {
   const body = document.getElementById('folderpicker-body');
   const rows = folderPickerIds.map(id => notebook.find(r => r.id === id)).filter(Boolean);
   body.innerHTML = `
-    <div class="folderpicker-preview-note">以下 ${rows.length} 条将移到【${targetName}】：</div>
+    <div class="folderpicker-preview-note">以下 ${rows.length} 条将移到【${escapeHtml(targetName)}】：</div>
     <div class="folderpicker-preview-list">
-      ${rows.map(r => `<div class="folderpicker-preview-item">${r.num ? r.num+' · ' : ''}${r.name}　（${folderNameOf(r.folderId)} → ${targetName}）</div>`).join('')}
+      ${rows.map(r => `<div class="folderpicker-preview-item">${escapeHtml(r.num ? r.num+' · ' : '')}${escapeHtml(r.name)}　（${escapeHtml(folderNameOf(r.folderId))} → ${escapeHtml(targetName)}）</div>`).join('')}
     </div>
     <div class="folderpicker-foot">
       <button class="io-btn io-btn-export" onclick="renderFolderPickerBody()">返回重选</button>
@@ -4897,7 +4917,7 @@ function renderFolderManageBody() {
     <div class="foldermanage-row">
       <button class="foldermanage-row-btn" title="上移" ${idx===0?'disabled style="opacity:.3"':''} onclick="moveFolderOrder('${f.id}',-1)">↑</button>
       <button class="foldermanage-row-btn" title="下移" ${idx===folders.length-1?'disabled style="opacity:.3"':''} onclick="moveFolderOrder('${f.id}',1)">↓</button>
-      <input class="foldermanage-row-name" value="${f.name.replace(/"/g,'&quot;')}" onchange="renameFolder('${f.id}', this.value)">
+      <input class="foldermanage-row-name" value="${escapeHtml(f.name)}" onchange="renameFolder('${f.id}', this.value)">
       <span class="foldermanage-row-count">${count} 条</span>
       <button class="foldermanage-row-btn danger" title="删除文件夹（记录不会被删除，转入未分类）" onclick="deleteFolder('${f.id}')">删除</button>
     </div>`;
@@ -4990,9 +5010,8 @@ function renderNbTagFilterBar() {
   if(counts.size === 0) { container.innerHTML = ''; return; }
   const segHtml = [`<button class="nb-seg-btn ${nbTagFilter.size===0?'active':''}" onclick="selectNbCategory('')">全部</button>`]
     .concat(NB_QUICK_CATEGORIES.map(t => {
-      const esc = t.replace(/'/g,"\\'");
       const active = nbTagFilter.size===1 && nbTagFilter.has(t);
-      return `<button class="nb-seg-btn ${active?'active':''}" onclick="selectNbCategory('${esc}')">${t}</button>`;
+      return `<button class="nb-seg-btn ${active?'active':''}" onclick="selectNbCategory(${escJsArg(t)})">${escapeHtml(t)}</button>`;
     })).join('');
   // The 筛选 button flags itself only when the current state could not have come from the
   // segmented bar alone (a multi-select, or a tag outside the fixed quick-category list).
@@ -5002,7 +5021,7 @@ function renderNbTagFilterBar() {
     const filteredCount = filterByTags(notebook, nbTagFilter, nbTagFilterMode).length;
     summaryHtml = `
       <div class="nb-tagfilter-summary">
-        <span>筛选：${[...nbTagFilter].join(' · ')}（${filteredCount} 条）</span>
+        <span>筛选：${escapeHtml([...nbTagFilter].join(' · '))}（${filteredCount} 条）</span>
         ${nbTagFilter.size > 1 ? `<button class="nb-tagfilter-mode-btn" onclick="toggleNbTagFilterMode()">${nbTagFilterMode==='AND'?'同时满足':'任一满足'}</button>` : ''}
         <span class="nb-tagfilter-clear" onclick="clearNbTagFilter()">清除</span>
       </div>`;
@@ -5055,11 +5074,10 @@ function renderNbTagPanelBody() {
     ...[...counts.keys()].filter(t => !EFFECT_TAG_OPTIONS.includes(t)).sort(),
   ];
   list.innerHTML = orderedTags.map(t => {
-    const esc = t.replace(/'/g,"\\'");
     return `
     <label class="tagpanel-row">
-      <input type="checkbox" ${nbTagFilter.has(t)?'checked':''} onchange="toggleNbTagCheckbox('${esc}')">
-      <span class="tagpanel-row-name">${t}</span>
+      <input type="checkbox" ${nbTagFilter.has(t)?'checked':''} onchange="toggleNbTagCheckbox(${escJsArg(t)})">
+      <span class="tagpanel-row-name">${escapeHtml(t)}</span>
       <span class="tagpanel-row-count">${counts.get(t)}</span>
     </label>`;
   }).join('');
@@ -5096,10 +5114,10 @@ function nbCardHtml(rec, ni, idPrefix) {
   const hasBase = (rec.baseIngredients||[]).some(i=>i.parts>0);
   const si = rec.sourceInfo || {};
   const baseTags = (rec.baseIngredients||[]).map(i=>
-    `<span class="nb-ingredient-tag">${i.name} ${i.parts}</span>`
+    `<span class="nb-ingredient-tag">${escapeHtml(i.name)} ${escapeHtml(i.parts)}</span>`
   ).join('');
   const addTags = Object.entries(rec.additives||{}).map(([name,pct])=>
-    `<span class="nb-additive-tag">${name} +${(+pct).toFixed(3)}%</span>`
+    `<span class="nb-additive-tag">${escapeHtml(name)} +${(+pct).toFixed(3)}%</span>`
   ).join('');
   // §B 复合釉试片：显示名未手动填写时，从图层栈（底→面）实时生成，不写库
   // 批量导入的记录同理允许 name 为空，兜底显示"未命名试片 · 导入 <日期>"，同样绝不写回 name 列
@@ -5109,29 +5127,29 @@ function nbCardHtml(rec, ni, idPrefix) {
     if(!layers.length) return '';
     return `<div class="nb-layer-stack">${layers.map((l,i)=>{
       const g = compositeGlazes.find(cg=>cg.id===l.glazeId);
-      return `${i>0?'<span class="nb-layer-arrow">›</span>':''}<span class="nb-layer-chip">${g?g.name:'？'}${(l.coats||1)>1?` ×${l.coats}遍`:''}${l.application?` <span style="opacity:0.6">(${l.application})</span>`:''}</span>`;
+      return `${i>0?'<span class="nb-layer-arrow">›</span>':''}<span class="nb-layer-chip">${escapeHtml(g?g.name:'？')}${(l.coats||1)>1?` ×${l.coats}遍`:''}${l.application?` <span style="opacity:0.6">(${escapeHtml(l.application)})</span>`:''}</span>`;
     }).join('')}</div>`;
   })() : '';
   const compositeMetaHtml = isComposite ? [
-    rec.clayBody ? `<span class="nb-ingredient-tag">泥料：${rec.clayBody}</span>` : '',
-    rec.firing ? `<span class="nb-ingredient-tag">烧成：${rec.firing}</span>` : '',
+    rec.clayBody ? `<span class="nb-ingredient-tag">泥料：${escapeHtml(rec.clayBody)}</span>` : '',
+    rec.firing ? `<span class="nb-ingredient-tag">烧成：${escapeHtml(rec.firing)}</span>` : '',
   ].filter(Boolean).join('') : '';
   const fc = rec.firingCurveId ? firingCurves.find(c=>c.id===rec.firingCurveId) : null;
   const metaBadges = [
-    fc ? `<span class="nb-ingredient-tag">窑：${fc.name}</span>` : '',
-    rec.dataConfidence && rec.dataConfidence !== '可靠' ? `<span class="nb-additive-tag" style="color:var(--danger)">数据：${rec.dataConfidence}</span>` : '',
+    fc ? `<span class="nb-ingredient-tag">窑：${escapeHtml(fc.name)}</span>` : '',
+    rec.dataConfidence && rec.dataConfidence !== '可靠' ? `<span class="nb-additive-tag" style="color:var(--danger)">数据：${escapeHtml(rec.dataConfidence)}</span>` : '',
   ].join('');
   const effectTagsHtml = (rec.effectTags||[]).length
-    ? `<span class="nb-effect-tags">${rec.effectTags.map(t=>`<span class="nb-effect-tag">◇ ${t}</span>`).join('')}</span>`
+    ? `<span class="nb-effect-tags">${rec.effectTags.map(t=>`<span class="nb-effect-tag">◇ ${escapeHtml(t)}</span>`).join('')}</span>`
     : '';
   // §2 采集试片：来源信息常驻显示（不折叠），让它在列表里一眼和自己的实验区分开
   const sourcePlace = [si.location, si.studio].filter(Boolean).join('·');
   const sourceLine = [sourcePlace, si.date].filter(Boolean).join(' · ') || '来源未记录';
   const collectedSourceHtml = isCollected ? `
     <div class="nb-collected-source">
-      <div class="nb-collected-source-line">${sourceLine}</div>
-      ${si.teacher || si.firing_temp ? `<div class="nb-collected-meta-row">${[si.teacher?`指导：${si.teacher}`:'', si.firing_temp?`烧成：${si.firing_temp}`:''].filter(Boolean).join(' · ')}</div>` : ''}
-      ${si.notes_raw ? `<div class="nb-collected-notes-raw" style="white-space:pre-wrap">${si.notes_raw}</div>` : ''}
+      <div class="nb-collected-source-line">${escapeHtml(sourceLine)}</div>
+      ${si.teacher || si.firing_temp ? `<div class="nb-collected-meta-row">${[si.teacher?`指导：${escapeHtml(si.teacher)}`:'', si.firing_temp?`烧成：${escapeHtml(si.firing_temp)}`:''].filter(Boolean).join(' · ')}</div>` : ''}
+      ${si.notes_raw ? `<div class="nb-collected-notes-raw" style="white-space:pre-wrap">${escapeHtml(si.notes_raw)}</div>` : ''}
     </div>` : '';
   // batch-select is a notebook-tab-only UI mode; the starred tab has no batch bar
   const showBatchUi = idPrefix === 'nb' && nbBatchMode;
@@ -5147,17 +5165,17 @@ function nbCardHtml(rec, ni, idPrefix) {
           ${isComposite ? `<span class="nb-composite-badge-icon" title="复合釉试片"><svg width="18" height="18" viewBox="0 0 34 34" aria-label="复合釉"><rect x="7" y="9" width="20" height="3.4" rx="1.7" fill="var(--accent)"/><rect x="7" y="15.5" width="20" height="2.4" rx="1.2" fill="var(--accent)" opacity="0.72"/><rect x="7" y="21" width="20" height="1.6" rx="0.8" fill="var(--accent)" opacity="0.48"/></svg><span class="nb-composite-badge-count">${layersForEntry(rec.id).length}层</span></span>` : ''}
           ${rec.isDemo ? `<span class="nb-demo-badge" title="示例数据，帮助你熟悉功能，可在工具栏一键清除">示例</span>` : ''}
           ${rec.status==='planned' ? `<span class="nb-planned-badge" title="待试：还没烧">待</span>` : ''}
-          ${rec.num ? `<span class="nb-num">${rec.num}</span>` : ''}
-          <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${displayName}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
+          ${rec.num ? `<span class="nb-num">${escapeHtml(rec.num)}</span>` : ''}
+          <div class="nb-name" id="${idPrefix}name-display-${ni}" style="cursor:pointer" onclick="editNbName(${ni},'${idPrefix}')" title="点击改名">${escapeHtml(displayName)}${effectTagsHtml} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>
           <div id="${idPrefix}name-edit-${ni}" style="display:none;flex:1;align-items:center;gap:6px">
-            <input type="text" id="${idPrefix}name-input-${ni}" value="${rec.name}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
+            <input type="text" id="${idPrefix}name-input-${ni}" value="${escapeHtml(rec.name)}" style="flex:1;font-size:0.85rem;padding:3px 8px" onkeydown="if(event.key==='Enter')saveNbName(${ni},'${idPrefix}');if(event.key==='Escape')cancelNbName(${ni},'${idPrefix}')">
             <button class="nb-load-btn" onclick="saveNbName(${ni},'${idPrefix}')">保存</button>
             <button class="nb-del-btn" onclick="cancelNbName(${ni},'${idPrefix}')">✕</button>
           </div>
           <button class="nb-menu-trigger" onclick="toggleNbActionsMenu(event,'${idPrefix}-actions-${ni}')" title="更多操作">⋯</button>
         </div>
         <div class="nb-head-row2">
-          <div class="nb-date">${rec.savedAt}</div>
+          <div class="nb-date">${escapeHtml(rec.savedAt)}</div>
         </div>
         <div class="nb-quick-actions">
           ${rec.status==='planned' ? `<button class="nb-load-btn" onclick="markNbDone(${ni})">标记为已烧</button>` : ''}
@@ -5174,7 +5192,7 @@ function nbCardHtml(rec, ni, idPrefix) {
       </div>
       <div class="nb-body">
         ${collectedSourceHtml}
-        ${rec.status==='planned' && rec.planNotes ? `<div class="nb-collected-source"><div class="nb-section-label">试验计划</div><div class="nb-collected-notes-raw" style="white-space:pre-wrap">${rec.planNotes}</div></div>` : ''}
+        ${rec.status==='planned' && rec.planNotes ? `<div class="nb-collected-source"><div class="nb-section-label">试验计划</div><div class="nb-collected-notes-raw" style="white-space:pre-wrap">${escapeHtml(rec.planNotes)}</div></div>` : ''}
         ${isComposite ? `<div class="nb-section-label">叠釉</div>${compositeLayersHtml}` : ''}
         ${compositeMetaHtml ? `<div class="nb-row" style="margin-top:4px">${compositeMetaHtml}</div>` : ''}
         ${(!isCollected && !isComposite || baseTags) ? `<div class="nb-section-label">基础原料</div><div class="nb-row">${baseTags}</div>` : ''}
@@ -5184,11 +5202,11 @@ function nbCardHtml(rec, ni, idPrefix) {
         ${!isCollected && !isComposite ? renderGlazeTree(rec) : ''}
         <div id="${idPrefix}note-display-${ni}" onclick="editNbNote(${ni},'${idPrefix}')" style="cursor:pointer">
           ${rec.note
-            ? `<div class="nb-note" style="white-space:pre-wrap">${rec.note} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>`
+            ? `<div class="nb-note" style="white-space:pre-wrap">${escapeHtml(rec.note)} <span style="font-size:0.62rem;color:var(--ink3);font-family:var(--font-mono)">✎</span></div>`
             : `<div class="nb-add-note">＋ 添加备注</div>`}
         </div>
         <div id="${idPrefix}note-edit-${ni}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--nb-line)">
-          <textarea id="${idPrefix}note-input-${ni}" class="nb-note-textarea" oninput="autoGrowTextarea(this)" style="width:100%;min-height:150px;font-size:0.78rem;margin-bottom:6px">${rec.note||''}</textarea>
+          <textarea id="${idPrefix}note-input-${ni}" class="nb-note-textarea" oninput="autoGrowTextarea(this)" style="width:100%;min-height:150px;font-size:0.78rem;margin-bottom:6px">${escapeHtml(rec.note||'')}</textarea>
           <div style="display:flex;gap:6px">
             <button class="nb-load-btn" style="flex:1" onclick="saveNbNote(${ni},'${idPrefix}')">保存</button>
             <button class="nb-del-btn" style="white-space:nowrap" onclick="insertBlankLine('${idPrefix}note-input-${ni}')">↵ 空行</button>
@@ -5265,9 +5283,9 @@ function renderRecipeCalcResult() {
   if(!rec) { wrap.innerHTML = ''; return; }
   const { targetDry, wetTotal, dryPct } = readRecipeCalcInputs();
   const r = computeRecipeCalc(rec, recipeCalcMode, targetDry, wetTotal, dryPct);
-  if(!r.ok) { wrap.innerHTML = r.error ? `<div class="error-msg">${r.error}</div>` : ''; return; }
-  const baseRowsHtml = r.baseRows.map(row => `<tr><td>${row.name}</td><td>${row.parts}</td><td>${row.grams.toFixed(1)}g</td></tr>`).join('');
-  const addRowsHtml = r.addRows.map(row => `<tr><td>${row.name}<span class="tag-add">外加</span></td><td>${(+row.pct).toFixed(3)}%</td><td class="pct-highlight">${row.grams.toFixed(2)}g</td></tr>`).join('');
+  if(!r.ok) { wrap.innerHTML = r.error ? `<div class="error-msg">${escapeHtml(r.error)}</div>` : ''; return; }
+  const baseRowsHtml = r.baseRows.map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.parts)}</td><td>${row.grams.toFixed(1)}g</td></tr>`).join('');
+  const addRowsHtml = r.addRows.map(row => `<tr><td>${escapeHtml(row.name)}<span class="tag-add">外加</span></td><td>${(+row.pct).toFixed(3)}%</td><td class="pct-highlight">${row.grams.toFixed(2)}g</td></tr>`).join('');
   wrap.innerHTML = `
     <table>
       <thead><tr><th>原料</th><th>份数/外加%</th><th>克数</th></tr></thead>
@@ -5300,8 +5318,10 @@ function copyRecipeCalcResult() {
 // 任何能读写 A 账号的凭证。链接是自包含的静态快照，和分享人的账号完全解耦；B 导入时
 // 数据存进 B 自己的账号（B 的 auth.uid()），走 B 的正常 RLS，新生成 id，不会复用 A 的 id。
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+// 把字符串安全地放进内联事件属性（onclick="fn(...)")里当 JS 字符串参数：先 JSON 成字面量，再做 HTML 转义。
+function escJsArg(s) { return escapeHtml(JSON.stringify(String(s == null ? '' : s))); }
 
 // gzip via the native Streams API when available（不引入任何外部压缩库）；
 // 老浏览器没有 CompressionStream 时退化为不压缩，链接仅会更长，功能不受影响。
@@ -5513,7 +5533,7 @@ function validateShareData(data) {
 let recipeImportData = null;
 function openRecipeImportPreview(data) {
   recipeImportData = data;
-  document.getElementById('recipeimport-title').textContent = escapeHtml(data.name);
+  document.getElementById('recipeimport-title').textContent = data.name;
   const parts = [];
   if(data.kind === 'composite') {
     parts.push(`<div class="nb-section-label">釉层（底 → 面）</div>`);
@@ -5974,7 +5994,7 @@ function renderBase() {
     const row = document.createElement('div');
     row.className = 'base-row';
     row.innerHTML = `
-      <input type="text" value="${ing.name}" placeholder="原料名称" oninput="baseIngredients[${i}].name=this.value">
+      <input type="text" value="${escapeHtml(ing.name)}" placeholder="原料名称" oninput="baseIngredients[${i}].name=this.value">
       <input type="number" value="${ing.parts}" min="0" step="0.1" placeholder="份数" oninput="baseIngredients[${i}].parts=parseFloat(this.value)||0">
       <button class="btn-icon" onclick="removeBase(${i})" title="删除">×</button>
     `;
@@ -6017,11 +6037,11 @@ function renderGlazes() {
     console.warn(`[glazes 源引用异常] 第${gi}步「${glazes[gi]?.name}」: ${issue}`));
   glazes.forEach((g,gi) => {
     const sourceOpts = glazes.slice(0,gi).map((prev)=>
-      `<option value="${prev.stepId}" ${g.sourceId===prev.stepId?'selected':''}>${prev.name}</option>`
+      `<option value="${escapeHtml(prev.stepId)}" ${g.sourceId===prev.stepId?'selected':''}>${escapeHtml(prev.name)}</option>`
     ).join('');
     const addRows = g.additives.map((a,ai)=>`
       <div class="additive-row">
-        <input type="text" value="${a.name}" placeholder="添加剂名称" oninput="glazes[${gi}].additives[${ai}].name=this.value">
+        <input type="text" value="${escapeHtml(a.name)}" placeholder="添加剂名称" oninput="glazes[${gi}].additives[${ai}].name=this.value">
         <input type="number" value="${a.amount}" min="0" step="0.001" placeholder="克数" oninput="glazes[${gi}].additives[${ai}].amount=parseFloat(this.value)||0">
         <button class="btn-icon" onclick="removeAdditive(${gi},${ai})" title="删除">×</button>
       </div>
@@ -6037,11 +6057,11 @@ function renderGlazes() {
     card.innerHTML = `
       <div class="glaze-card-head">
         <span class="glaze-num">${gi+1}</span>
-        <input type="text" value="${g.name}" placeholder="釉料名称" style="flex:1;font-size:0.85rem;" oninput="glazes[${gi}].name=this.value">
+        <input type="text" value="${escapeHtml(g.name)}" placeholder="釉料名称" style="flex:1;font-size:0.85rem;" oninput="glazes[${gi}].name=this.value">
         <button class="btn-icon" onclick="removeGlaze(${gi})" title="删除">×</button>
       </div>
       <div class="glaze-card-body">
-        <div class="field-label" style="margin-bottom:4px">取自 <span style="font-weight:400;${srcIssue?'color:var(--danger)':'color:var(--ink3)'}">← ${srcLabel}</span></div>
+        <div class="field-label" style="margin-bottom:4px">取自 <span style="font-weight:400;${srcIssue?'color:var(--danger)':'color:var(--ink3)'}">← ${escapeHtml(srcLabel)}</span></div>
         <div class="source-row">
           <select onchange="glazes[${gi}].sourceId=(this.value===''?null:this.value);renderGlazes()">
             <option value="" ${g.sourceId===null?'selected':''}>基础釉</option>
@@ -6166,14 +6186,14 @@ function calculate() {
         <div class="result-block">
           <div class="result-head">
             <div class="result-head-left">
-              <strong>${g.name}</strong>
-              <span>取自 ${srcName} · 取用量待定</span>
+              <strong>${escapeHtml(g.name)}</strong>
+              <span>取自 ${escapeHtml(srcName)} · 取用量待定</span>
             </div>
             <button class="nb-save-btn save-btn" style="margin-right:4px" onclick="openNbModal(${i}, null)">存入配方本</button>
           </div>
           <div style="padding:14px 16px;font-size:0.82rem;color:var(--ink3);font-family:var(--font-mono)">
             <span style="background:var(--bg2);border:1px dashed var(--line);padding:3px 10px;border-radius:4px;margin-right:8px">？ 取用量未填写</span>
-            添加剂：${additivesStr}
+            添加剂：${escapeHtml(additivesStr)}
           </div>
         </div>
       `;
@@ -6183,8 +6203,8 @@ function calculate() {
     // Base rows: fixed parts, grams proportional to baseDry in this sample
     const baseRows = baseIngredients.map(ing => {
       return `<tr>
-        <td>${ing.name}</td>
-        <td>${ing.parts}</td>
+        <td>${escapeHtml(ing.name)}</td>
+        <td>${escapeHtml(ing.parts)}</td>
         <td>—</td>
       </tr>`;
     }).join('');
@@ -6193,14 +6213,14 @@ function calculate() {
     const addRows = Object.entries(s.additiveTotals).map(([name,amt]) => {
       const pct = (amt / s.baseDry * 100).toFixed(3);
       return `<tr>
-        <td>${name}<span class="tag-add">外加</span></td>
+        <td>${escapeHtml(name)}<span class="tag-add">外加</span></td>
         <td>—</td>
         <td class="pct-highlight">${pct}%</td>
       </tr>`;
     }).join('');
 
     // source amount label — clarify what the number means
-    const srcAmtLabel = `取自 ${srcName} 中的 ${g.sourceAmount}g<span style="font-size:0.62rem;opacity:0.7">（湿釉，含干料+水）</span>`;
+    const srcAmtLabel = `取自 ${escapeHtml(srcName)} 中的 ${g.sourceAmount}g<span style="font-size:0.62rem;opacity:0.7">（湿釉，含干料+水）</span>`;
 
     // same shape as a notebook record's additives field ({name: pctOfBaseDry}), so it
     // can go straight into renderChemPanel without any conversion.
@@ -6211,7 +6231,7 @@ function calculate() {
       <div class="result-block">
         <div class="result-head">
           <div class="result-head-left">
-            <strong>${g.name}</strong>
+            <strong>${escapeHtml(g.name)}</strong>
             <span>${srcAmtLabel}</span>
           </div>
           <button class="nb-save-btn save-btn" onclick="openNbModal(${i}, lastGlazeStates[${i}])">存入配方本</button>
@@ -6290,7 +6310,7 @@ function openUpdModal(ri) {
   // Build notebook options string (shared across all selects)
   const nbOpts = '<option value="">— 不更新 —</option>' +
     notebook.map((rec, ni) =>
-      `<option value="${ni}">${rec.num ? rec.num+' · ' : ''}${rec.name}</option>`
+      `<option value="${ni}">${escapeHtml(rec.num ? rec.num+' · ' : '')}${escapeHtml(rec.name)}</option>`
     ).join('');
 
   const pairs = document.getElementById('upd-modal-pairs');
@@ -6299,7 +6319,7 @@ function openUpdModal(ri) {
       <input type="checkbox" id="upd-chk-${gi}"
         onchange="updTogglePair(${gi})"
         style="margin:0">
-      <label for="upd-chk-${gi}" class="updmodal-glaze-name" style="cursor:pointer">${g.name || '未命名'}</label>
+      <label for="upd-chk-${gi}" class="updmodal-glaze-name" style="cursor:pointer">${escapeHtml(g.name || '未命名')}</label>
       <span class="updmodal-arrow">→</span>
       <select class="updmodal-nb-select" id="upd-sel-${gi}" disabled
         onchange="updCheckConfirm()">
@@ -6399,16 +6419,16 @@ function renderHistory() {
     return;
   }
   wrap.innerHTML = history.map((rec, ri) => {
-    const baseTags = rec.baseIngredients.map(i=>`<span class="fav-tag">${i.name} ${i.parts}</span>`).join('');
+    const baseTags = rec.baseIngredients.map(i=>`<span class="fav-tag">${escapeHtml(i.name)} ${escapeHtml(i.parts)}</span>`).join('');
     const glazeRows = rec.glazes.map((g, gi) => {
       const s = rec.glazeStates[gi];
       if(!s) return '';
       const addTags = Object.entries(s.additiveTotals).map(([name,amt])=>{
         const pct = (amt/s.baseDry*100).toFixed(3);
-        return `<span class="fav-tag" style="background:var(--fav-bg);color:var(--fav);border-color:var(--fav-line)">${name} +${pct}%</span>`;
+        return `<span class="fav-tag" style="background:var(--fav-bg);color:var(--fav);border-color:var(--fav-line)">${escapeHtml(name)} +${pct}%</span>`;
       }).join('');
       return `<div style="margin-bottom:6px">
-        <span style="font-size:0.78rem;font-weight:500;margin-right:8px">${g.name}</span>
+        <span style="font-size:0.78rem;font-weight:500;margin-right:8px">${escapeHtml(g.name)}</span>
         ${addTags || '<span class="fav-tag">无添加剂</span>'}
       </div>`;
     }).join('');
@@ -6416,7 +6436,7 @@ function renderHistory() {
     return `
       <div class="fav-card">
         <div class="fav-card-head">
-          <div class="fav-name" style="flex:1;font-size:0.82rem;color:var(--ink2)">${rec.savedAt}</div>
+          <div class="fav-name" style="flex:1;font-size:0.82rem;color:var(--ink2)">${escapeHtml(rec.savedAt)}</div>
           <div class="fav-actions">
             <button class="fav-load-btn" onclick="loadHistory(${ri})">载入到计算器</button>
             <button class="nb-load-btn" onclick="openUpdModal(${ri})" style="background:var(--nb-bg);color:var(--nb);border-color:var(--nb-line)">更新到配方本…</button>
@@ -6491,7 +6511,7 @@ function openBaseNbModal() {
   const baseWrap = document.getElementById('nb-modal-base-wrap');
   document.getElementById('nb-modal-base-addbtn').style.display = 'none';
   baseWrap.innerHTML = baseIngredients.map(i =>
-    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${i.name} ${i.parts}</span>`
+    `<span style="font-family:var(--font-mono);font-size:0.75rem;display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:3px;background:var(--bg2);border:1px solid var(--line)">${escapeHtml(i.name)} ${escapeHtml(i.parts)}</span>`
   ).join('');
 
   nbModalAdditives = [];
